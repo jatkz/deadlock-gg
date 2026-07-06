@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [[ ! -x venv/bin/python ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -m venv venv
+  else
+    echo "python3 is not installed on this system." >&2
+    exit 1
+  fi
+fi
+
+exec "$SCRIPT_DIR/venv/bin/python" scripts/deadlock_match_ui_server.py "$@"

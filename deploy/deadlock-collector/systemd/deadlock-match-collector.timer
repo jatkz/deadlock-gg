@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Deadlock match collector continuously
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=60s
+Persistent=true
+Unit=deadlock-match-collector.service
+
+[Install]
+WantedBy=timers.target

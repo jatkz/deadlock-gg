@@ -1,0 +1,12 @@
+[Unit]
+Description=Deadlock match collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=__RUN_USER__
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__PROJECT_DIR__/run_deadlock_collector_cycle.sh
+ExecStopPost=+/bin/bash __PROJECT_DIR__/deploy/deadlock-collector/disable_timer_on_exit_status.sh deadlock-match-collector.timer 75
+Environment=PYTHONUNBUFFERED=1

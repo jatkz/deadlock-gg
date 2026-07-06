@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVICE_NAME="deadlock-match-collector"
+
+if command -v systemctl >/dev/null 2>&1; then
+  if ! systemctl list-unit-files "${SERVICE_NAME}.timer" --no-legend 2>/dev/null | grep -q "${SERVICE_NAME}.timer"; then
+    echo "Deadlock collector systemd timer is not installed."
+    exit 0
+  fi
+
+  if sudo -n true 2>/dev/null; then
+    sudo systemctl disable --now "${SERVICE_NAME}.timer" 2>/dev/null || true
+    sudo systemctl stop "${SERVICE_NAME}.service" 2>/dev/null || true
+    echo "Deadlock collector timer/service stopped."
+  else
+    echo "Deadlock collector timer appears to be installed, but sudo needs a password." >&2
+    echo "Run this manually if you want to stop it:" >&2
+    echo "  sudo systemctl disable --now ${SERVICE_NAME}.timer" >&2
+    echo "  sudo systemctl stop ${SERVICE_NAME}.service" >&2
+    exit 1
+  fi
+else
+  echo "systemctl is not available on this machine." >&2
+fi

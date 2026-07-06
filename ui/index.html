@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deadlock Match Detail</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <section class="sidebar">
+        <header class="topbar">
+          <div>
+            <h1>Deadlock Match Detail</h1>
+            <p id="datasetSummary">Loading dataset...</p>
+          </div>
+          <button id="refreshButton" type="button" title="Refresh performances">Refresh</button>
+        </header>
+
+        <div class="filters">
+          <label>
+            Minimum performance percentile
+            <input id="percentileInput" type="range" min="80" max="99" step="1" value="95">
+            <span id="percentileValue">95</span>
+          </label>
+          <div class="durationFilters">
+            <label>
+              Min duration
+              <input id="minDurationInput" type="number" inputmode="numeric" min="0" step="1" placeholder="Any">
+            </label>
+            <label>
+              Max duration
+              <input id="maxDurationInput" type="number" inputmode="numeric" min="0" step="1" placeholder="Any">
+            </label>
+            <label>
+              Min KDA ratio
+              <input id="minKdaInput" type="number" inputmode="decimal" min="0" step="0.1" placeholder="Any">
+            </label>
+          </div>
+          <label>
+            Hero or match
+            <input id="searchInput" type="search" placeholder="Drifter, Calico, 924...">
+          </label>
+        </div>
+
+        <div class="availability" id="availability"></div>
+        <div class="listHeader">
+          <span>Standout Performances</span>
+          <span id="resultCount"></span>
+        </div>
+        <div id="performanceList" class="performanceList"></div>
+      </section>
+
+      <section class="detail">
+        <div id="emptyState" class="emptyState">
+          Select a performance to inspect the match, item route, ability order, and stat timeline.
+        </div>
+        <div id="matchDetail" class="matchDetail hidden">
+          <section class="matchHero">
+            <img id="featuredHeroCard" alt="">
+            <div class="matchHeroOverlay">
+              <p id="matchMeta"></p>
+              <h2 id="featuredTitle"></h2>
+              <div id="featuredStats" class="statPills"></div>
+            </div>
+          </section>
+
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Players</h3>
+              <span id="scoreNote"></span>
+            </div>
+            <div id="scoreboard" class="scoreboard"></div>
+          </section>
+
+          <section class="playerPanels">
+            <div class="routeStack">
+              <div class="sectionBlock">
+                <div class="sectionTitle">
+                  <h3 id="routeTitle">Shop Item Route</h3>
+                  <span id="routeSubtitle"></span>
+                </div>
+                <div id="itemRoute" class="itemRoute"></div>
+              </div>
+
+              <div class="sectionBlock">
+                <div class="sectionTitle">
+                  <h3>Ability Order</h3>
+                  <span id="abilitySubtitle"></span>
+                </div>
+                <div id="abilityRoute" class="itemRoute abilityRoute"></div>
+              </div>
+            </div>
+
+            <div class="sectionBlock">
+              <div class="sectionTitle">
+                <h3>Timelines</h3>
+                <span>Cumulative samples</span>
+              </div>
+              <div class="chartTabs">
+                <button class="chartTab active" data-metric="player_damage">Damage</button>
+                <button class="chartTab" data-metric="net_worth">Net worth</button>
+                <button class="chartTab" data-metric="kills">Kills</button>
+                <button class="chartTab" data-metric="assists">Assists</button>
+                <button class="chartTab" data-metric="farm_kills">Farm</button>
+                <button class="chartTab" data-metric="ability_points">Ability points</button>
+                <button class="chartTab" data-metric="player_damage_taken">Damage taken</button>
+              </div>
+              <div id="timelineChart" class="timelineChart"></div>
+            </div>
+
+            <div class="sectionBlock">
+              <div class="sectionTitle">
+                <h3>Combat Timeline</h3>
+                <span>Sample deltas</span>
+              </div>
+              <div id="combatTimeline" class="combatTimeline"></div>
+            </div>
+
+            <div class="sectionBlock">
+              <div class="sectionTitle">
+                <h3>Kill / Death Timeline</h3>
+                <span>Exact metadata events</span>
+              </div>
+              <div id="killDeathTimeline" class="killDeathTimeline"></div>
+            </div>
+          </section>
+
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Final Stats</h3>
+              <span id="finalStatsNote"></span>
+            </div>
+            <div id="finalStats" class="finalStats"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

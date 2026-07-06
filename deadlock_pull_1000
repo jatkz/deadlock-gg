@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+FRESH=0
+if [[ "${1:-}" == "--fresh" ]]; then
+  FRESH=1
+  shift
+fi
+
+if [[ "${1:-}" != "" ]]; then
+  echo "Usage: $0 [--fresh]" >&2
+  echo "Pulls up to 1000 top-quartile matches, then stops the background collector." >&2
+  exit 2
+fi
+
+if [[ ! -f .env && -f .env.example ]]; then
+  cp .env.example .env
+  echo "Created .env from .env.example"
+fi
+
+if [[ ! -x venv/bin/python ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -m venv venv
+  else
+    echo "python3 is not installed on this system." >&2
+    exit 1
+  fi
+fi
+
+PYTHON_BIN="$SCRIPT_DIR/venv/bin/python"
+
+chmod +x \
+  run_deadlock_collector_cycle.sh \
+  deadlock_off \
+  scripts/deadlock_match_collector.py \
+  scripts/build_deadlock_asset_manifest.py \
+  scripts/build_deadlock_sqlite_db.py
+
+if [[ "$FRESH" -eq 1 ]]; then
+  rm -rf data/deadlock-ranked data/deadlock-analysis
+fi
+
+if [[ ! -f assets/deadlock/manifest.json ]]; then
+  "$PYTHON_BIN" scripts/build_deadlock_asset_manifest.py --pretty
+fi
+
+echo "Starting one-shot Deadlock pull: scan_mode=backfill request_limit=100 max_requests=20 max_matches=1000 min_badge=${DEADLOCK_MIN_AVERAGE_BADGE:-84} min_duration_s=${DEADLOCK_MIN_DURATION_SECONDS:-720}"
+
+set +e
+DEADLOCK_SCAN_MODE=backfill \
+DEADLOCK_MIN_AVERAGE_BADGE="${DEADLOCK_MIN_AVERAGE_BADGE:-84}" \
+DEADLOCK_MIN_DURATION_SECONDS="${DEADLOCK_MIN_DURATION_SECONDS:-720}" \
+DEADLOCK_MAX_REQUESTS_PER_RUN=20 \
+DEADLOCK_REQUEST_LIMIT=100 \
+DEADLOCK_MAX_MATCHES_PER_RUN=1000 \
+DEADLOCK_MAX_MATCHES_TOTAL=1000 \
+DEADLOCK_REQUEST_TIMEOUT_SECONDS="${DEADLOCK_REQUEST_TIMEOUT_SECONDS:-90}" \
+"$PYTHON_BIN" scripts/deadlock_match_collector.py
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -ne 0 && "$STATUS" -ne 75 ]]; then
+  exit "$STATUS"
+fi
+
+"$PYTHON_BIN" scripts/build_deadlock_sqlite_db.py
+
+echo
+echo "Pulled up to 1000 top-quartile Deadlock matches."
+echo "Raw data: data/deadlock-ranked"
+echo "SQLite:   data/deadlock-analysis/deadlock_matches.sqlite"
