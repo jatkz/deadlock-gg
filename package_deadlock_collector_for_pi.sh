@@ -21,9 +21,11 @@ FILES=(
   deadlock_off
   deadlock_clean
   deadlock_pull_1000
+  deadlock_save_match
   scripts/build_deadlock_asset_manifest.py
   scripts/build_deadlock_sqlite_db.py
   scripts/deadlock_match_collector.py
+  scripts/save_deadlock_match.py
   run_deadlock_collector_cycle.sh
   pull_deadlock_data_from_pi.sh
   deploy/deadlock-collector/install_on_pi.sh

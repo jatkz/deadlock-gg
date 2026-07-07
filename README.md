@@ -30,6 +30,13 @@ Pull 1000 top-quartile matches and build SQLite:
 ./deadlock_pull_1000 --fresh
 ```
 
+Save specific matches so future fresh pulls keep them:
+
+```sh
+./deadlock_save_match 92484329
+./deadlock_pull_1000 --fresh
+```
+
 Open the local match-detail UI:
 
 ```sh
@@ -62,6 +69,12 @@ Output defaults to:
 
 ```text
 data/deadlock-ranked/
+```
+
+Saved matches are stored separately in:
+
+```text
+data/deadlock-saved/saved_matches.jsonl
 ```
 
 See [docs/deadlock-collector.md](docs/deadlock-collector.md) for the API flow, filters, payload shape, and Raspberry Pi deployment.

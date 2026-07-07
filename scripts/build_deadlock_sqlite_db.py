@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable, TextIO
 
 DEFAULT_INPUT_DIR = Path("data/deadlock-ranked")
+DEFAULT_SAVED_INPUT_DIR = Path("data/deadlock-saved")
 DEFAULT_OUTPUT_DB = Path("data/deadlock-analysis/deadlock_matches.sqlite")
 DEFAULT_ASSET_MANIFEST = Path("assets/deadlock/manifest.json")
 DEFAULT_ANALYSIS_MAX_MATCHES = 25_000
@@ -398,9 +399,10 @@ def insert_match(
     return player_count, item_count, stat_count
 
 
-def trim_to_latest_matches(connection: sqlite3.Connection, max_matches: int) -> None:
+def trim_to_latest_matches(connection: sqlite3.Connection, max_matches: int, protected_input_dirs: list[Path]) -> None:
     if max_matches <= 0:
         return
+    protected_prefixes = [str(path) for path in protected_input_dirs]
     connection.executescript(
         f"""
         CREATE TEMP TABLE keep_matches AS
@@ -408,7 +410,20 @@ def trim_to_latest_matches(connection: sqlite3.Connection, max_matches: int) -> 
         FROM matches
         ORDER BY start_time DESC, match_id DESC
         LIMIT {int(max_matches)};
-
+        """
+    )
+    for prefix in protected_prefixes:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO keep_matches
+            SELECT match_id
+            FROM matches
+            WHERE input_file = ? OR input_file LIKE ?
+            """,
+            (prefix, f"{prefix}/%"),
+        )
+    connection.executescript(
+        """
         DELETE FROM player_stat_samples WHERE match_id NOT IN (SELECT match_id FROM keep_matches);
         DELETE FROM player_items WHERE match_id NOT IN (SELECT match_id FROM keep_matches);
         DELETE FROM players WHERE match_id NOT IN (SELECT match_id FROM keep_matches);
@@ -421,6 +436,8 @@ def trim_to_latest_matches(connection: sqlite3.Connection, max_matches: int) -> 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a SQLite database from Deadlock JSONL match chunks.")
     parser.add_argument("--input-dir", action="append", type=Path, default=None)
+    parser.add_argument("--saved-input-dir", type=Path, default=DEFAULT_SAVED_INPUT_DIR)
+    parser.add_argument("--no-saved-input", action="store_true", help="Do not include saved matches in the analysis DB.")
     parser.add_argument("--output-db", type=Path, default=DEFAULT_OUTPUT_DB)
     parser.add_argument("--asset-manifest", type=Path, default=DEFAULT_ASSET_MANIFEST)
     parser.add_argument("--max-matches", type=int, default=analysis_max_matches_default())
@@ -431,6 +448,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     input_dirs = args.input_dir or [Path(os.getenv("DEADLOCK_DATA_DIR", str(DEFAULT_INPUT_DIR)))]
+    protected_input_dirs: list[Path] = []
+    if not args.no_saved_input and args.saved_input_dir.exists():
+        input_dirs = [*input_dirs, args.saved_input_dir]
+        protected_input_dirs.append(args.saved_input_dir)
     files = iter_match_files(input_dirs, args.limit_files)
     imported_at = utc_iso_now()
     hero_names, item_names, rank_names = load_asset_maps(args.asset_manifest)
@@ -459,7 +480,7 @@ def main() -> int:
             counts["players"] += players
             counts["items"] += items
             counts["stat_samples"] += stat_samples
-        trim_to_latest_matches(connection, args.max_matches)
+        trim_to_latest_matches(connection, args.max_matches, protected_input_dirs)
         connection.execute(
             """
             INSERT INTO import_runs (

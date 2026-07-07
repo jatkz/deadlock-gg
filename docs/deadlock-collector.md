@@ -189,6 +189,14 @@ Pull up to 1000 top-quartile matches and build SQLite:
 
 Use `./deadlock_pull_1000 --fresh` to remove existing raw match chunks and analysis DBs first.
 
+Saved matches survive fresh pulls. Save one or more matches from the current SQLite DB with:
+
+```sh
+./deadlock_save_match 92484329 92484342
+```
+
+Saved records are written to `data/deadlock-saved/saved_matches.jsonl`. `./deadlock_pull_1000 --fresh` removes `data/deadlock-ranked` and `data/deadlock-analysis`, but keeps `data/deadlock-saved`; the SQLite rebuild includes saved matches and protects them from the latest-match trim.
+
 Manual one-shot collection:
 
 ```sh

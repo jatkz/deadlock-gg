@@ -13,7 +13,7 @@ This will remove generated Deadlock collector artifacts:
   collector-dist
   scripts/__pycache__
 
-It will keep .env and assets/deadlock/manifest.json.
+It will keep .env, assets/deadlock/manifest.json, and data/deadlock-saved.
 
 Run:
   ./deadlock_clean --yes

@@ -6,6 +6,7 @@ import json
 import mimetypes
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 DEFAULT_DB = Path("data/deadlock-analysis/deadlock_matches.sqlite")
 DEFAULT_ASSET_MANIFEST = Path("assets/deadlock/manifest.json")
 DEFAULT_STATIC_DIR = Path("ui")
+DEFAULT_SAVED_MATCHES_FILE = Path("data/deadlock-saved/saved_matches.jsonl")
+
+
+def utc_iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def as_int(value: Any, default: int = 0) -> int:
@@ -191,10 +197,15 @@ def asset_payload(asset_id: int, assets: dict[int, dict[str, Any]], fallback_pre
     }
 
 
+def truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass
 class AppState:
     db_path: Path
     static_dir: Path
+    saved_matches_file: Path
     hero_assets: dict[int, dict[str, Any]]
     item_assets: dict[int, dict[str, Any]]
     score_percentiles: dict[tuple[int, int], float]
@@ -235,6 +246,79 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return connection
 
 
+def extract_saved_match_id(record: dict[str, Any]) -> int | None:
+    for value in (
+        record.get("match_id"),
+        record.get("summary", {}).get("match_id") if isinstance(record.get("summary"), dict) else None,
+        record.get("match", {}).get("match_id") if isinstance(record.get("match"), dict) else None,
+    ):
+        match_id = optional_int(value)
+        if match_id is not None:
+            return match_id
+    return None
+
+
+def load_saved_match_records(path: Path) -> dict[int, dict[str, Any]]:
+    records: dict[int, dict[str, Any]] = {}
+    if not path.exists():
+        return records
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            match_id = extract_saved_match_id(record)
+            if match_id is not None:
+                records[match_id] = record
+    return records
+
+
+def write_saved_match_records(path: Path, records: dict[int, dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as handle:
+        for match_id in sorted(records, reverse=True):
+            handle.write(json.dumps(records[match_id], separators=(",", ":"), sort_keys=True))
+            handle.write("\n")
+    tmp_path.replace(path)
+
+
+def summarize_saved_match(match: dict[str, Any]) -> dict[str, Any]:
+    players = match.get("players") if isinstance(match.get("players"), list) else []
+    return {
+        "match_id": match.get("match_id"),
+        "start_time": match.get("start_time"),
+        "duration_s": match.get("duration_s"),
+        "game_mode": match.get("game_mode"),
+        "match_mode": match.get("match_mode"),
+        "winning_team": match.get("winning_team"),
+        "match_outcome": match.get("match_outcome"),
+        "average_badge_team0": match.get("average_badge_team0"),
+        "average_badge_team1": match.get("average_badge_team1"),
+        "player_count": len(players),
+        "hero_ids": [player.get("hero_id") for player in players if isinstance(player, dict)],
+    }
+
+
+def build_saved_match_record(match: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "collected_at": utc_iso_now(),
+        "source": {
+            "name": "deadlock-gg-ui-save",
+            "endpoint": "sqlite:matches.raw_json",
+        },
+        "summary": summarize_saved_match(match),
+        "match": match,
+    }
+
+
 def build_score_percentiles(db_path: Path) -> tuple[dict[tuple[int, int], float], int]:
     if not db_path.exists():
         return {}, 0
@@ -272,6 +356,13 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
             self.handle_api(parsed.path, parse_qs(parsed.query))
             return
         self.serve_static(parsed.path)
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/"):
+            self.send_error_json("Unknown route", status=404)
+            return
+        self.handle_api_post(parsed.path)
 
     def send_json(self, payload: Any, status: int = 200) -> None:
         body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -321,6 +412,21 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
         except sqlite3.Error as exc:
             self.send_error_json(f"SQLite error: {exc}", status=500)
 
+    def handle_api_post(self, path: str) -> None:
+        if not self.state.db_path.exists():
+            self.send_error_json(f"SQLite database not found: {self.state.db_path}", status=404)
+            return
+        try:
+            if path.startswith("/api/matches/") and path.endswith("/save"):
+                match_id = as_int(path.split("/")[-2], -1)
+                self.send_json(self.api_save_match(match_id))
+            else:
+                self.send_error_json("Unknown API route", status=404)
+        except sqlite3.Error as exc:
+            self.send_error_json(f"SQLite error: {exc}", status=500)
+        except ValueError as exc:
+            self.send_error_json(str(exc), status=404)
+
     def api_summary(self) -> dict[str, Any]:
         with connect(self.state.db_path) as connection:
             counts = {
@@ -364,6 +470,8 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
         max_duration_s = optional_int(first(params, "maxDurationS"))
         min_kda = optional_float(first(params, "minKda"))
         search = (first(params, "search") or "").strip().lower()
+        saved_only = truthy(first(params, "savedOnly"))
+        saved_match_ids = set(load_saved_match_records(self.state.saved_matches_file)) if saved_only else set()
 
         query = """
             SELECT
@@ -381,6 +489,8 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
 
         performances = []
         for row in rows:
+            if saved_only and as_int(row.get("match_id")) not in saved_match_ids:
+                continue
             duration_s = as_int(row.get("duration_s"))
             if min_duration_s is not None and duration_s < min_duration_s:
                 continue
@@ -433,6 +543,7 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
             "minDurationS": min_duration_s,
             "maxDurationS": max_duration_s,
             "minKda": min_kda,
+            "savedOnly": saved_only,
         }
 
     def api_match(self, match_id: int) -> dict[str, Any]:
@@ -529,8 +640,28 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
         match_payload["bannedHeroIds"] = json_loads(match_payload.pop("banned_hero_ids_json", None))
         match_payload["objectives"] = json_loads(match_payload.pop("objectives_json", None))
         match_payload["midBoss"] = json_loads(match_payload.pop("mid_boss_json", None))
+        match_payload["saved"] = match_id in load_saved_match_records(self.state.saved_matches_file)
         match_payload.pop("raw_json", None)
         return {"match": match_payload, "players": enriched_players}
+
+    def api_save_match(self, match_id: int) -> dict[str, Any]:
+        with connect(self.state.db_path) as connection:
+            row = connection.execute("SELECT raw_json FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+        if row is None or row["raw_json"] is None:
+            raise ValueError("Match not found")
+        match = json_loads(row["raw_json"])
+        if not isinstance(match, dict):
+            raise ValueError("Match raw JSON is not available")
+
+        records = load_saved_match_records(self.state.saved_matches_file)
+        records[match_id] = build_saved_match_record(match)
+        write_saved_match_records(self.state.saved_matches_file, records)
+        return {
+            "saved": True,
+            "matchId": match_id,
+            "totalSaved": len(records),
+            "output": str(self.state.saved_matches_file),
+        }
 
 
 def first(params: dict[str, list[str]], key: str) -> str | None:
@@ -542,6 +673,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Serve the local Deadlock match detail UI.")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--asset-manifest", type=Path, default=DEFAULT_ASSET_MANIFEST)
+    parser.add_argument("--saved-matches-file", type=Path, default=DEFAULT_SAVED_MATCHES_FILE)
     parser.add_argument("--static-dir", type=Path, default=DEFAULT_STATIC_DIR)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
@@ -555,6 +687,7 @@ def main() -> int:
     state = AppState(
         db_path=args.db,
         static_dir=args.static_dir,
+        saved_matches_file=args.saved_matches_file,
         hero_assets=hero_assets,
         item_assets=item_assets,
         score_percentiles=percentiles,

@@ -16,6 +16,7 @@ const el = {
   maxDurationInput: document.querySelector("#maxDurationInput"),
   minKdaInput: document.querySelector("#minKdaInput"),
   searchInput: document.querySelector("#searchInput"),
+  savedOnlyInput: document.querySelector("#savedOnlyInput"),
   refreshButton: document.querySelector("#refreshButton"),
   performanceList: document.querySelector("#performanceList"),
   resultCount: document.querySelector("#resultCount"),
@@ -25,6 +26,8 @@ const el = {
   matchMeta: document.querySelector("#matchMeta"),
   featuredTitle: document.querySelector("#featuredTitle"),
   featuredStats: document.querySelector("#featuredStats"),
+  saveMatchButton: document.querySelector("#saveMatchButton"),
+  saveMatchStatus: document.querySelector("#saveMatchStatus"),
   scoreboard: document.querySelector("#scoreboard"),
   scoreNote: document.querySelector("#scoreNote"),
   timelineChart: document.querySelector("#timelineChart"),
@@ -95,6 +98,7 @@ function currentFilters() {
     maxDuration: el.maxDurationInput.value,
     minKda: el.minKdaInput.value,
     search: el.searchInput.value,
+    savedOnly: el.savedOnlyInput.checked,
     timelineEventTypes: Array.from(state.timelineEventTypes),
   };
 }
@@ -111,6 +115,7 @@ function applyFilters(filters) {
   if (filters.maxDuration !== undefined) el.maxDurationInput.value = String(filters.maxDuration);
   if (filters.minKda !== undefined) el.minKdaInput.value = String(filters.minKda);
   if (filters.search !== undefined) el.searchInput.value = String(filters.search);
+  if (filters.savedOnly !== undefined) el.savedOnlyInput.checked = Boolean(filters.savedOnly);
   if (Array.isArray(filters.timelineEventTypes)) {
     state.timelineEventTypes = new Set(
       filters.timelineEventTypes.filter((type) => TIMELINE_EVENT_TYPES.includes(type))
@@ -154,6 +159,15 @@ async function getJson(url) {
   return payload;
 }
 
+async function postJson(url) {
+  const response = await fetch(url, { method: "POST" });
+  const payload = await response.json();
+  if (!response.ok || payload.error) {
+    throw new Error(payload.error || `Request failed: ${response.status}`);
+  }
+  return payload;
+}
+
 async function loadSummary() {
   const summary = await getJson("/api/summary");
   const counts = summary.counts;
@@ -178,17 +192,24 @@ async function loadPerformances() {
   if (minDurationS) params.set("minDurationS", minDurationS);
   if (maxDurationS) params.set("maxDurationS", maxDurationS);
   if (minKda) params.set("minKda", minKda);
+  if (el.savedOnlyInput.checked) params.set("savedOnly", "1");
   const payload = await getJson(`/api/performances?${params.toString()}`);
   state.performances = payload.items;
   el.resultCount.textContent = `${fmt(payload.totalMatched)} found`;
   renderPerformanceList();
-  if (!state.selectedPerformance && state.performances.length) {
-    await selectPerformance(state.performances[0]);
+  if (!state.performances.length) {
+    clearSelectedPerformance("No performances match the current filters.");
+    return;
   }
+  await selectPerformance(state.performances[0]);
 }
 
 function renderPerformanceList() {
   el.performanceList.innerHTML = "";
+  if (!state.performances.length) {
+    el.performanceList.innerHTML = `<p class="subtle">No performances match the current filters.</p>`;
+    return;
+  }
   for (const perf of state.performances) {
     const button = document.createElement("button");
     button.className = "performanceCard";
@@ -215,6 +236,15 @@ function renderPerformanceList() {
     button.addEventListener("click", () => selectPerformance(perf));
     el.performanceList.appendChild(button);
   }
+}
+
+function clearSelectedPerformance(message) {
+  state.selectedPerformance = null;
+  state.selectedMatch = null;
+  state.selectedPlayerSlot = null;
+  el.matchDetail.classList.add("hidden");
+  el.emptyState.classList.remove("hidden");
+  el.emptyState.textContent = message || "Select a performance to inspect the match, build route, combat timeline, and final stats.";
 }
 
 async function selectPerformance(perf) {
@@ -252,9 +282,33 @@ function renderMatch() {
     ["Result", player.won ? "Win" : "Loss"],
     ["Why", (player.reasons || []).join(", ") || "strong score"],
   ].map(([label, value]) => `<span class="pill">${label}: <strong>${value}</strong></span>`).join("");
+  renderSaveMatchState();
 
   renderScoreboard(payload.players);
   renderSelectedPlayer(player);
+}
+
+function renderSaveMatchState(message = "") {
+  const match = state.selectedMatch?.match;
+  const isSaved = Boolean(match?.saved);
+  el.saveMatchButton.disabled = !match || isSaved;
+  el.saveMatchButton.textContent = isSaved ? "Saved Match" : "Save Match";
+  el.saveMatchStatus.textContent = message || (isSaved ? "Kept across fresh pulls" : "Save this match across fresh pulls");
+}
+
+async function saveSelectedMatch() {
+  const match = state.selectedMatch?.match;
+  if (!match?.match_id) return;
+  el.saveMatchButton.disabled = true;
+  el.saveMatchStatus.textContent = "Saving...";
+  try {
+    await postJson(`/api/matches/${match.match_id}/save`);
+    match.saved = true;
+    renderSaveMatchState("Saved to data/deadlock-saved");
+  } catch (error) {
+    el.saveMatchButton.disabled = false;
+    el.saveMatchStatus.textContent = error.message;
+  }
 }
 
 function renderScoreboard(players) {
@@ -886,7 +940,9 @@ el.minDurationInput.addEventListener("input", debounce(saveFiltersAndLoadPerform
 el.maxDurationInput.addEventListener("input", debounce(saveFiltersAndLoadPerformances));
 el.minKdaInput.addEventListener("input", debounce(saveFiltersAndLoadPerformances));
 el.searchInput.addEventListener("input", debounce(saveFiltersAndLoadPerformances));
+el.savedOnlyInput.addEventListener("change", saveFiltersAndLoadPerformances);
 el.refreshButton.addEventListener("click", loadPerformances);
+el.saveMatchButton.addEventListener("click", saveSelectedMatch);
 
 loadSavedFilters();
 

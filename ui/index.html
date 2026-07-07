@@ -41,6 +41,10 @@
             Hero or match
             <input id="searchInput" type="search" placeholder="Drifter, Calico, 924...">
           </label>
+          <label class="checkboxFilter">
+            <input id="savedOnlyInput" type="checkbox">
+            Saved matches only
+          </label>
         </div>
 
         <div class="availability" id="availability"></div>
@@ -53,7 +57,7 @@
 
       <section class="detail">
         <div id="emptyState" class="emptyState">
-          Select a performance to inspect the match, item route, ability order, and stat timeline.
+          Select a performance to inspect the match, build route, combat timeline, and final stats.
         </div>
         <div id="matchDetail" class="matchDetail hidden">
           <section class="matchHero">
@@ -62,6 +66,10 @@
               <p id="matchMeta"></p>
               <h2 id="featuredTitle"></h2>
               <div id="featuredStats" class="statPills"></div>
+              <div class="matchActions">
+                <button id="saveMatchButton" type="button">Save Match</button>
+                <span id="saveMatchStatus" class="meta"></span>
+              </div>
             </div>
           </section>
 

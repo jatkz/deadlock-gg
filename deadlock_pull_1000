@@ -71,4 +71,5 @@ fi
 echo
 echo "Pulled up to 1000 top-quartile Deadlock matches."
 echo "Raw data: data/deadlock-ranked"
+echo "Saved matches: data/deadlock-saved"
 echo "SQLite:   data/deadlock-analysis/deadlock_matches.sqlite"
