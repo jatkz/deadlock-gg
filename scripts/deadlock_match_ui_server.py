@@ -181,7 +181,7 @@ def dict_rows(cursor: sqlite3.Cursor) -> list[dict[str, Any]]:
     return [dict(row) for row in cursor.fetchall()]
 
 
-def asset_payload(asset_id: int, assets: dict[int, dict[str, str]], fallback_prefix: str) -> dict[str, str | int]:
+def asset_payload(asset_id: int, assets: dict[int, dict[str, Any]], fallback_prefix: str) -> dict[str, str | int]:
     asset = assets.get(asset_id, {})
     return {
         "id": asset_id,
@@ -195,13 +195,13 @@ def asset_payload(asset_id: int, assets: dict[int, dict[str, str]], fallback_pre
 class AppState:
     db_path: Path
     static_dir: Path
-    hero_assets: dict[int, dict[str, str]]
-    item_assets: dict[int, dict[str, str]]
+    hero_assets: dict[int, dict[str, Any]]
+    item_assets: dict[int, dict[str, Any]]
     score_percentiles: dict[tuple[int, int], float]
     score_count: int
 
 
-def load_assets(path: Path) -> tuple[dict[int, dict[str, str]], dict[int, dict[str, str]]]:
+def load_assets(path: Path) -> tuple[dict[int, dict[str, Any]], dict[int, dict[str, Any]]]:
     if not path.exists():
         return {}, {}
     manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -221,6 +221,7 @@ def load_assets(path: Path) -> tuple[dict[int, dict[str, str]], dict[int, dict[s
             "type": item.get("type") or "",
             "slot": item.get("item_slot_type") or "",
             "tier": str(item.get("item_tier") or ""),
+            "cost": item.get("cost"),
         }
         for item in manifest.get("items", [])
         if isinstance(item, dict) and item.get("id") is not None
@@ -481,6 +482,7 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
             samples_by_player.setdefault(as_int(sample["player_slot"]), []).append(sample)
 
         items_by_player: dict[int, list[dict[str, Any]]] = {}
+        ability_ranks: dict[tuple[int, int], int] = {}
         for item in items:
             player_slot = as_int(item["player_slot"])
             player_samples = samples_by_player.get(player_slot, [])
@@ -489,6 +491,9 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
             item["asset"] = asset
             item["itemKind"] = "ability" if asset.get("type") == "ability" else "shop"
             if item["itemKind"] == "ability":
+                rank_key = (player_slot, item_id)
+                ability_ranks[rank_key] = ability_ranks.get(rank_key, 0) + 1
+                item["abilityRank"] = ability_ranks[rank_key]
                 item["abilityStep"] = "unlock" if as_int(item.get("upgrade_id")) == 0 else "upgrade"
             imbued_ability_id = optional_int(item.get("imbued_ability_id"), 1)
             if imbued_ability_id is not None:

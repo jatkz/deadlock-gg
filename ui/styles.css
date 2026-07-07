@@ -408,6 +408,26 @@ h3 {
   box-sizing: border-box;
 }
 
+.itemInfo {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.imbueBadge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(164, 111, 218, 0.42);
+  background: rgba(164, 111, 218, 0.13);
+  color: #e4d0f7;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .itemBuy.weaponItem {
   border-color: rgba(224, 138, 64, 0.72);
   background: rgba(50, 31, 18, 0.74);
@@ -481,37 +501,205 @@ h3 {
   font-size: 12px;
 }
 
-.combatTimeline,
-.killDeathTimeline {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
+.timelineToggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
 }
 
-.combatEvent {
+.timelineToggle {
+  min-height: 26px;
+  border: 1px solid var(--line);
+  background: #10140e;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.timelineToggle.active {
+  border-color: rgba(216, 195, 91, 0.48);
+  background: rgba(216, 195, 91, 0.14);
+  color: #f5f1d2;
+}
+
+.fullTimeline {
   display: grid;
-  grid-template-columns: 98px 1fr;
-  gap: 10px;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.timelineRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.78fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.timelineLane {
+  display: grid;
+  gap: 5px;
+  align-content: stretch;
+}
+
+.timelineMainGroup {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.timelineMainGroup.sameTimeGroup {
+  grid-template-columns: repeat(var(--timeline-columns, 1), minmax(0, 1fr));
+}
+
+.timelineMainGroup.sameTimeGroup .timelineEvent {
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 4px 6px;
   align-items: start;
+  min-width: 0;
+}
+
+.timelineMainGroup.sameTimeGroup .combatTime {
+  grid-column: 1 / -1;
+  font-size: 11px;
+}
+
+.timelineMainGroup.sameTimeGroup .timelineEvent > span:last-child,
+.timelineMainGroup.sameTimeGroup .combatDeltas {
+  min-width: 0;
+}
+
+.timelineMainGroup.sameTimeGroup .timelineEvent strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.timelineMainGroup.sameTimeGroup .deltaChip {
+  max-width: 100%;
+  min-height: auto;
+  padding: 2px 5px;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.timelineEvent {
+  display: grid;
+  grid-template-columns: 78px 24px 1fr;
+  gap: 8px;
+  align-items: center;
   border: 1px solid var(--line);
   background: var(--panel);
-  border-radius: 8px;
-  padding: 9px 10px;
+  border-radius: 6px;
+  padding: 5px 7px;
 }
 
-.combatEvent.killEvent {
+.windowLane {
+  min-height: 34px;
+  align-self: stretch;
+}
+
+.windowLane:empty {
+  border-left: 1px solid rgba(216, 195, 91, 0.08);
+}
+
+.timelineEvent.windowEvent {
+  grid-template-columns: 90px 34px 1fr;
+  min-height: 52px;
+  height: 100%;
+  align-self: stretch;
+  padding: 8px 9px;
+  border-color: rgba(104, 154, 222, 0.72);
+  background: linear-gradient(135deg, rgba(22, 32, 50, 0.78), rgba(20, 39, 34, 0.78));
+}
+
+.timelineEvent.windowEvent img,
+.timelineEvent.windowEvent .timelineIcon {
+  width: 34px;
+  height: 34px;
+}
+
+.timelineEvent img {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: #2e3328;
+}
+
+.timelineEvent strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.timelineIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 4px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+  text-transform: uppercase;
+  overflow: hidden;
+}
+
+.timelineEvent.itemEvent.weaponItem {
+  border-color: rgba(224, 138, 64, 0.72);
+  background: rgba(50, 31, 18, 0.74);
+}
+
+.timelineEvent.itemEvent.vitalityItem {
+  border-color: rgba(112, 198, 117, 0.72);
+  background: rgba(22, 43, 25, 0.74);
+}
+
+.timelineEvent.itemEvent.spiritItem {
+  border-color: rgba(164, 111, 218, 0.72);
+  background: rgba(39, 27, 55, 0.74);
+}
+
+.timelineEvent.itemEvent.sellEvent {
+  border-style: dashed;
+  opacity: 0.88;
+}
+
+.timelineEvent.itemEvent.sellEvent img {
+  filter: grayscale(0.45);
+}
+
+.timelineEvent.abilityEvent {
+  border-color: rgba(216, 195, 91, 0.58);
+  background: rgba(47, 42, 21, 0.72);
+}
+
+.timelineEvent.killEvent {
   border-color: rgba(112, 198, 170, 0.8);
   background: rgba(22, 41, 34, 0.78);
 }
 
-.combatEvent.deathEvent {
+.timelineEvent.deathEvent {
   border-color: rgba(218, 91, 91, 0.85);
   background: rgba(47, 24, 24, 0.78);
 }
 
+.timelineEvent.assistEvent {
+  border-color: rgba(104, 154, 222, 0.72);
+  background: rgba(22, 32, 50, 0.74);
+}
+
+.timelineEvent.neutralEvent {
+  border-color: rgba(104, 183, 151, 0.72);
+  background: rgba(20, 39, 34, 0.74);
+}
+
 .combatTime {
   color: #f5f1d2;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -519,19 +707,20 @@ h3 {
 .combatDeltas {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
+  margin-top: 2px;
 }
 
 .deltaChip {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
+  min-height: 18px;
   border: 1px solid rgba(216, 195, 91, 0.22);
   background: rgba(216, 195, 91, 0.09);
   color: #f1e9b8;
-  border-radius: 6px;
-  padding: 0 7px;
-  font-size: 12px;
+  border-radius: 5px;
+  padding: 0 5px;
+  font-size: 11px;
 }
 
 .finalStats {
@@ -592,8 +781,17 @@ h3 {
     grid-template-columns: 1fr;
   }
 
-  .combatEvent {
+  .timelineRow,
+  .timelineMainGroup,
+  .timelineMainGroup.sameTimeGroup,
+  .timelineMainGroup.sameTimeGroup .timelineEvent,
+  .timelineEvent,
+  .timelineEvent.windowEvent {
     grid-template-columns: 1fr;
+  }
+
+  .timelineEvent.windowEvent {
+    height: auto;
   }
 
   .finalStatGrid {

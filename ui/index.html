@@ -111,18 +111,18 @@
 
             <div class="sectionBlock">
               <div class="sectionTitle">
-                <h3>Combat Timeline</h3>
-                <span>Sample deltas</span>
+                <h3>Build / Combat Timeline</h3>
+                <span>Items, abilities, K/D, assist windows</span>
               </div>
-              <div id="combatTimeline" class="combatTimeline"></div>
-            </div>
-
-            <div class="sectionBlock">
-              <div class="sectionTitle">
-                <h3>Kill / Death Timeline</h3>
-                <span>Exact metadata events</span>
+              <div class="timelineToggles">
+                <button class="timelineToggle active" type="button" data-event-type="item" aria-pressed="true">Items</button>
+                <button class="timelineToggle active" type="button" data-event-type="ability" aria-pressed="true">Abilities</button>
+                <button class="timelineToggle active" type="button" data-event-type="kill" aria-pressed="true">Kills</button>
+                <button class="timelineToggle active" type="button" data-event-type="death" aria-pressed="true">Deaths</button>
+                <button class="timelineToggle active" type="button" data-event-type="assist" aria-pressed="true">Assists</button>
+                <button class="timelineToggle active" type="button" data-event-type="neutral" aria-pressed="true">Neutrals</button>
               </div>
-              <div id="killDeathTimeline" class="killDeathTimeline"></div>
+              <div id="fullTimeline" class="fullTimeline"></div>
             </div>
           </section>
 

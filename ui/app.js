@@ -4,6 +4,7 @@ const state = {
   selectedMatch: null,
   selectedPlayerSlot: null,
   metric: "player_damage",
+  timelineEventTypes: new Set(["item", "ability", "kill", "death", "assist", "neutral"]),
 };
 
 const el = {
@@ -32,8 +33,8 @@ const el = {
   abilitySubtitle: document.querySelector("#abilitySubtitle"),
   abilityRoute: document.querySelector("#abilityRoute"),
   timelineChart: document.querySelector("#timelineChart"),
-  combatTimeline: document.querySelector("#combatTimeline"),
-  killDeathTimeline: document.querySelector("#killDeathTimeline"),
+  timelineToggles: document.querySelectorAll(".timelineToggle"),
+  fullTimeline: document.querySelector("#fullTimeline"),
   finalStats: document.querySelector("#finalStats"),
   finalStatsNote: document.querySelector("#finalStatsNote"),
 };
@@ -49,6 +50,8 @@ const metricLabels = {
 };
 
 const FILTER_STORAGE_KEY = "deadlockMatchUiFilters";
+const TIMELINE_EVENT_TYPES = ["item", "ability", "kill", "death", "assist", "neutral"];
+const SEPARATE_SELL_EVENT_SECONDS = 60;
 
 function fmt(value) {
   if (value === null || value === undefined || value === "") return "-";
@@ -96,6 +99,7 @@ function currentFilters() {
     maxDuration: el.maxDurationInput.value,
     minKda: el.minKdaInput.value,
     search: el.searchInput.value,
+    timelineEventTypes: Array.from(state.timelineEventTypes),
   };
 }
 
@@ -111,7 +115,13 @@ function applyFilters(filters) {
   if (filters.maxDuration !== undefined) el.maxDurationInput.value = String(filters.maxDuration);
   if (filters.minKda !== undefined) el.minKdaInput.value = String(filters.minKda);
   if (filters.search !== undefined) el.searchInput.value = String(filters.search);
+  if (Array.isArray(filters.timelineEventTypes)) {
+    state.timelineEventTypes = new Set(
+      filters.timelineEventTypes.filter((type) => TIMELINE_EVENT_TYPES.includes(type))
+    );
+  }
   el.percentileValue.textContent = el.percentileInput.value;
+  updateTimelineToggleButtons();
 }
 
 function loadSavedFilters() {
@@ -308,8 +318,7 @@ function renderPlayerRow(player) {
 }
 
 function renderSelectedPlayer(player) {
-  const abilityItems = (player.items || []).filter((item) => item.itemKind === "ability" || item.asset?.type === "ability");
-  const shopItems = (player.items || []).filter((item) => !(item.itemKind === "ability" || item.asset?.type === "ability"));
+  const { abilityItems, shopItems } = timelineParts(player);
 
   el.routeTitle.textContent = `${player.hero_name || "Hero"} shop items`;
   el.routeSubtitle.textContent = `${shopItems.length} purchases`;
@@ -323,8 +332,7 @@ function renderSelectedPlayer(player) {
     : `<p class="subtle">No ability order rows were stored for this player.</p>`;
 
   renderChart(player);
-  renderCombatTimeline(player);
-  renderKillDeathTimeline(player);
+  renderFullTimeline(player, shopItems, abilityItems);
   renderFinalStats(player);
 }
 
@@ -332,6 +340,25 @@ function renderNetWorthEstimate(label, estimate) {
   if (!estimate || estimate.value === null || estimate.value === undefined) return "";
   const sampleTime = estimate.timeText ? ` @ ${estimate.timeText}` : "";
   return `<span>${label} ~${fmt(estimate.value)} NW${sampleTime}</span>`;
+}
+
+function itemCostLabel(item) {
+  const cost = Number(item.asset?.cost ?? item.cost);
+  if (!Number.isFinite(cost) || cost <= 0) return "";
+  return `${fmt(cost)} souls`;
+}
+
+function abilityRankLabel(item) {
+  const rank = Number(item.abilityRank);
+  if (!Number.isFinite(rank) || rank <= 0) return "";
+  return `rank ${rank}`;
+}
+
+function imbueLabel(item) {
+  if (item.imbuedAbility?.name) return `imbued: ${item.imbuedAbility.name}`;
+  const imbuedAbilityId = Number(item.imbued_ability_id);
+  if (!Number.isFinite(imbuedAbilityId) || imbuedAbilityId <= 0) return "";
+  return `imbued: ability ${imbuedAbilityId}`;
 }
 
 function shopItemTypeClass(item) {
@@ -347,18 +374,20 @@ function renderShopItem(item) {
     renderNetWorthEstimate("buy", item.estimatedNetWorthAtBuy),
     item.sold_time_s ? renderNetWorthEstimate("sell", item.estimatedNetWorthAtSell) : "",
   ].filter(Boolean).join("");
+  const imbue = imbueLabel(item);
   const itemMeta = [
     item.asset?.slot || item.asset?.type || "shop",
-    item.imbuedAbility ? `imbued: ${item.imbuedAbility.name}` : "",
+    itemCostLabel(item),
     item.sold_time_s ? `sold ${mmss(item.sold_time_s)}` : "",
   ].filter(Boolean).join(" · ");
   return `
     <div class="itemBuy ${shopItemTypeClass(item)}">
       <span class="meta">${item.timeText || mmss(item.game_time_s)}</span>
       <img src="${item.asset?.image || ""}" alt="">
-      <span>
+      <span class="itemInfo">
         <strong>${item.item_name || item.asset?.name || item.item_id || "Unknown item"}</strong>
         <span class="meta">${itemMeta}</span>
+        ${imbue ? `<span class="imbueBadge">${imbue}</span>` : ""}
       </span>
       <span class="meta nwEstimate">${netWorthLines || "-"}</span>
     </div>
@@ -367,15 +396,16 @@ function renderShopItem(item) {
 
 function renderAbilityItem(item) {
   const step = item.abilityStep || (Number(item.upgrade_id || 0) === 0 ? "unlock" : "upgrade");
+  const rankLabel = abilityRankLabel(item);
   return `
     <div class="itemBuy abilityBuy">
       <span class="meta">${item.timeText || mmss(item.game_time_s)}</span>
       <img src="${item.asset?.image || ""}" alt="">
       <span>
         <strong>${item.item_name || item.asset?.name || item.item_id || "Unknown ability"}</strong>
-        <span class="meta">${step}${item.upgrade_id ? ` · upgrade ${item.upgrade_id}` : ""}</span>
+        <span class="meta">${[step, rankLabel].filter(Boolean).join(" · ")}</span>
       </span>
-      <span class="abilityStep ${step}">${step}</span>
+      <span class="abilityStep ${step}">${rankLabel || step}</span>
     </div>
   `;
 }
@@ -468,59 +498,79 @@ function deltaChip(label, value, suffix = "") {
   return `<span class="deltaChip">${label} +${fmt(value)}${suffix}</span>`;
 }
 
-function renderCombatTimeline(player) {
-  const samples = player.stats || [];
-  if (samples.length < 2) {
-    el.combatTimeline.innerHTML = `<p class="subtle">No sample intervals for this player.</p>`;
-    return;
-  }
-
-  const rows = [];
-  for (let index = 1; index < samples.length; index += 1) {
-    const previous = samples[index - 1];
-    const current = samples[index];
-    const chips = [
-      deltaChip("kills", statDelta(current, previous, "kills")),
-      deltaChip("deaths", statDelta(current, previous, "deaths")),
-      deltaChip("assists", statDelta(current, previous, "assists")),
-      deltaChip("damage", statDelta(current, previous, "player_damage")),
-      deltaChip("taken", statDelta(current, previous, "player_damage_taken")),
-      deltaChip("healing", statDelta(current, previous, "player_healing")),
-      deltaChip("ability kills", statDelta(current, previous, "ability_kills")),
-      deltaChip("bullet kills", statDelta(current, previous, "bullet_kills")),
-      deltaChip("melee kills", statDelta(current, previous, "melee_kills")),
-      deltaChip("headshots", statDelta(current, previous, "headshot_kills")),
-    ].filter(Boolean);
-    if (!chips.length) continue;
-    rows.push(`
-      <div class="combatEvent">
-        <span class="combatTime">${previous.timeText || mmss(previous.time_stamp_s)}-${current.timeText || mmss(current.time_stamp_s)}</span>
-        <span class="combatDeltas">${chips.join("")}</span>
-      </div>
-    `);
-  }
-
-  el.combatTimeline.innerHTML = rows.length
-    ? rows.join("")
-    : `<p class="subtle">No combat deltas in the stored samples.</p>`;
-}
-
 function playerBySlot(slot) {
   if (!state.selectedMatch) return null;
   return state.selectedMatch.players.find((player) => Number(player.player_slot) === Number(slot)) || null;
 }
 
-function renderKillDeathTimeline(player) {
+function fullTimelineChip(label) {
+  return `<span class="deltaChip">${label}</span>`;
+}
+
+function itemTimelineEvents(items) {
+  return items.flatMap((item) => {
+    const buyTime = Number(item.game_time_s || 0);
+    const sellTime = Number(item.sold_time_s || 0);
+    const hasSeparateSellEvent = sellTime > 0 && sellTime - buyTime > SEPARATE_SELL_EVENT_SECONDS;
+    const title = item.item_name || item.asset?.name || item.item_id || "Unknown item";
+    const costLabel = itemCostLabel(item);
+    const imbue = imbueLabel(item);
+    const events = [{
+      type: "item",
+      typeClass: shopItemTypeClass(item),
+      time: buyTime,
+      timeLabel: item.timeText || mmss(item.game_time_s),
+      image: item.asset?.image || "",
+      title,
+      chips: [
+        fullTimelineChip(item.asset?.slot || item.asset?.type || "shop item"),
+        costLabel ? fullTimelineChip(costLabel) : "",
+        imbue ? fullTimelineChip(imbue) : "",
+        item.sold_time_s && !hasSeparateSellEvent ? fullTimelineChip(`sold ${mmss(item.sold_time_s)}`) : "",
+      ].filter(Boolean).join(""),
+    }];
+    if (hasSeparateSellEvent) {
+      events.push({
+        type: "item",
+        typeClass: `sellEvent ${shopItemTypeClass(item)}`,
+        time: sellTime,
+        timeLabel: mmss(sellTime),
+        image: item.asset?.image || "",
+        title: `Sold ${title}`,
+        chips: [
+          fullTimelineChip(item.asset?.slot || item.asset?.type || "shop item"),
+        ].filter(Boolean).join(""),
+      });
+    }
+    return events;
+  });
+}
+
+function abilityTimelineEvents(items) {
+  return items.map((item) => {
+    const step = item.abilityStep || (Number(item.upgrade_id || 0) === 0 ? "unlock" : "upgrade");
+    const rankLabel = abilityRankLabel(item);
+    return {
+      type: "ability",
+      time: Number(item.game_time_s || 0),
+      timeLabel: item.timeText || mmss(item.game_time_s),
+      image: item.asset?.image || "",
+      title: item.item_name || item.asset?.name || item.item_id || "Unknown ability",
+      chips: [
+        fullTimelineChip(step),
+        rankLabel ? fullTimelineChip(rankLabel) : "",
+      ].filter(Boolean).join(""),
+    };
+  });
+}
+
+function killDeathTimelineEvents(player) {
   const selectedSlot = Number(player.player_slot);
   const allDeathDetails = (state.selectedMatch?.players || []).flatMap((victim) => (
     (victim.deathDetails || []).map((detail) => ({ detail, victim }))
   ));
-  if (!allDeathDetails.length) {
-    el.killDeathTimeline.innerHTML = `<p class="subtle">No exact death details stored for this match. New pulls with death details enabled will populate this.</p>`;
-    return;
-  }
 
-  const events = allDeathDetails.flatMap(({ detail, victim }) => {
+  return allDeathDetails.flatMap(({ detail, victim }) => {
     const eventTime = Number(detail.game_time_s || 0);
     const timeToKill = Number.isFinite(Number(detail.time_to_kill_s)) ? `${Number(detail.time_to_kill_s).toFixed(1)}s TTK` : "";
     const deathDuration = Number.isFinite(Number(detail.death_duration_s)) ? `${fmt(detail.death_duration_s)}s death` : "";
@@ -531,10 +581,12 @@ function renderKillDeathTimeline(player) {
       return [{
         type: "death",
         time: eventTime,
+        timeLabel: mmss(eventTime),
+        title: "Death",
         chips: [
-          `<span class="deltaChip">died to ${killerLabel}</span>`,
-          timeToKill ? `<span class="deltaChip">${timeToKill}</span>` : "",
-          deathDuration ? `<span class="deltaChip">${deathDuration}</span>` : "",
+          fullTimelineChip(`died to ${killerLabel}`),
+          timeToKill ? fullTimelineChip(timeToKill) : "",
+          deathDuration ? fullTimelineChip(deathDuration) : "",
         ].filter(Boolean).join(""),
       }];
     }
@@ -543,25 +595,134 @@ function renderKillDeathTimeline(player) {
       return [{
         type: "kill",
         time: eventTime,
+        timeLabel: mmss(eventTime),
+        title: "Kill",
         chips: [
-          `<span class="deltaChip">killed ${victimLabel}</span>`,
-          timeToKill ? `<span class="deltaChip">${timeToKill}</span>` : "",
-          victimDeathDuration ? `<span class="deltaChip">${victimDeathDuration}</span>` : "",
+          fullTimelineChip(`killed ${victimLabel}`),
+          timeToKill ? fullTimelineChip(timeToKill) : "",
+          victimDeathDuration ? fullTimelineChip(victimDeathDuration) : "",
         ].filter(Boolean).join(""),
       }];
     }
     return [];
-  }).sort((a, b) => a.time - b.time);
+  });
+}
 
+function windowTimelineEvents(player) {
+  const samples = player.stats || [];
+  const events = [];
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1];
+    const current = samples[index];
+    const assists = statDelta(current, previous, "assists");
+    const neutralKills = statDelta(current, previous, "neutral_kills");
+    const hasAssists = assists && state.timelineEventTypes.has("assist");
+    const hasNeutrals = neutralKills && state.timelineEventTypes.has("neutral");
+    if (!hasAssists && !hasNeutrals) continue;
+
+    const titleParts = [
+      hasAssists ? `${fmt(assists)} assist${assists === 1 ? "" : "s"}` : "",
+      hasNeutrals ? `${fmt(neutralKills)} neutral${neutralKills === 1 ? "" : "s"}` : "",
+    ].filter(Boolean);
+    const chips = [
+      fullTimelineChip("sample window"),
+      hasAssists ? fullTimelineChip("assist timing approximate") : "",
+      hasNeutrals ? fullTimelineChip("neutral timing approximate") : "",
+    ].filter(Boolean);
+
+    events.push({
+      type: "window",
+      lane: "window",
+      startTime: Number(previous.time_stamp_s || 0),
+      endTime: Number(current.time_stamp_s || 0),
+      time: Number(current.time_stamp_s || 0),
+      timeLabel: `${previous.timeText || mmss(previous.time_stamp_s)}-${current.timeText || mmss(current.time_stamp_s)}`,
+      title: titleParts.join(" · "),
+      chips: chips.join(""),
+    });
+  }
+  return events;
+}
+
+function timelineEventCard(event) {
+  return `
+    <div class="timelineEvent ${event.type}Event ${event.lane === "window" ? "windowEvent" : ""} ${event.typeClass || ""}">
+      <span class="combatTime">${event.timeLabel || mmss(event.time)}</span>
+      ${event.image ? `<img src="${event.image}" alt="">` : `<span class="timelineIcon">${event.type}</span>`}
+      <span>
+        <strong>${event.title}</strong>
+        <span class="combatDeltas">${event.chips}</span>
+      </span>
+    </div>
+  `;
+}
+
+function timelineRows(events) {
+  const mainEvents = events.filter((event) => event.lane !== "window");
+  const windowEvents = events.filter((event) => event.lane === "window");
+  const rows = windowEvents.map((event) => ({
+    startTime: event.startTime ?? event.time,
+    endTime: event.endTime ?? event.time,
+    main: [],
+    windows: [event],
+  }));
+  for (const event of mainEvents) {
+    const matchingRow = rows.find((row) => event.time >= row.startTime && event.time <= row.endTime);
+    if (matchingRow) {
+      matchingRow.main.push(event);
+    } else {
+      rows.push({ startTime: event.time, endTime: event.time, main: [event], windows: [] });
+    }
+  }
+  return rows
+    .map((row) => ({
+      ...row,
+      main: row.main.sort((a, b) => a.time - b.time || String(a.type).localeCompare(String(b.type))),
+      windows: row.windows.sort((a, b) => a.time - b.time),
+    }))
+    .sort((a, b) => a.startTime - b.startTime);
+}
+
+function groupedMainTimelineCards(events) {
+  const groups = [];
+  for (const event of events) {
+    const group = groups.find((existing) => existing.time === event.time);
+    if (group) {
+      group.events.push(event);
+    } else {
+      groups.push({ time: event.time, events: [event] });
+    }
+  }
+
+  return groups.map((group) => `
+    <div class="timelineMainGroup${group.events.length > 1 ? " sameTimeGroup" : ""}" style="--timeline-columns: ${group.events.length}">
+      ${group.events.map(timelineEventCard).join("")}
+    </div>
+  `).join("");
+}
+
+function renderFullTimeline(player, shopItems, abilityItems) {
+  const allEvents = [
+    ...itemTimelineEvents(shopItems),
+    ...abilityTimelineEvents(abilityItems),
+    ...killDeathTimelineEvents(player),
+    ...windowTimelineEvents(player),
+  ].sort((a, b) => a.time - b.time || String(a.type).localeCompare(String(b.type)));
+  const events = allEvents.filter((event) => event.lane === "window" || state.timelineEventTypes.has(event.type));
+
+  if (!allEvents.length) {
+    el.fullTimeline.innerHTML = `<p class="subtle">No build or combat timeline events stored for this player.</p>`;
+    return;
+  }
   if (!events.length) {
-    el.killDeathTimeline.innerHTML = `<p class="subtle">No exact kills or deaths for this player in the stored death details.</p>`;
+    el.fullTimeline.innerHTML = `<p class="subtle">No timeline events match the selected type filters.</p>`;
     return;
   }
 
-  el.killDeathTimeline.innerHTML = events.map((event) => `
-    <div class="combatEvent ${event.type === "kill" ? "killEvent" : "deathEvent"}">
-      <span class="combatTime">${mmss(event.time)}</span>
-      <span class="combatDeltas">${event.chips}</span>
+  el.fullTimeline.innerHTML = timelineRows(events).map((row) => `
+    <div class="timelineRow">
+      <div class="timelineLane mainLane">${groupedMainTimelineCards(row.main)}</div>
+      <div class="timelineLane windowLane">${row.windows.map(timelineEventCard).join("")}</div>
     </div>
   `).join("");
 }
@@ -664,6 +825,27 @@ function debounce(fn, delay = 250) {
   };
 }
 
+function timelineParts(player) {
+  const abilityItems = (player.items || []).filter((item) => item.itemKind === "ability" || item.asset?.type === "ability");
+  const shopItems = (player.items || []).filter((item) => !(item.itemKind === "ability" || item.asset?.type === "ability"));
+  return { abilityItems, shopItems };
+}
+
+function renderSelectedFullTimeline() {
+  const player = selectedPlayer();
+  if (!player) return;
+  const { abilityItems, shopItems } = timelineParts(player);
+  renderFullTimeline(player, shopItems, abilityItems);
+}
+
+function updateTimelineToggleButtons() {
+  el.timelineToggles.forEach((button) => {
+    const enabled = state.timelineEventTypes.has(button.dataset.eventType);
+    button.classList.toggle("active", enabled);
+    button.setAttribute("aria-pressed", enabled ? "true" : "false");
+  });
+}
+
 document.querySelectorAll(".chartTab").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".chartTab").forEach((item) => item.classList.remove("active"));
@@ -671,6 +853,21 @@ document.querySelectorAll(".chartTab").forEach((button) => {
     state.metric = button.dataset.metric;
     const player = selectedPlayer();
     if (player) renderChart(player);
+  });
+});
+
+el.timelineToggles.forEach((button) => {
+  button.addEventListener("click", () => {
+    const eventType = button.dataset.eventType;
+    if (!TIMELINE_EVENT_TYPES.includes(eventType)) return;
+    if (state.timelineEventTypes.has(eventType)) {
+      state.timelineEventTypes.delete(eventType);
+    } else {
+      state.timelineEventTypes.add(eventType);
+    }
+    updateTimelineToggleButtons();
+    saveFilters();
+    renderSelectedFullTimeline();
   });
 });
 
