@@ -47,7 +47,7 @@ button.active {
 
 .app {
   display: grid;
-  grid-template-columns: minmax(360px, 430px) 1fr;
+  grid-template-columns: minmax(280px, 335px) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -227,8 +227,7 @@ h3 {
   margin-top: 7px;
 }
 
-.reasonTag,
-.abilityStep {
+.reasonTag {
   display: inline-flex;
   align-items: center;
   min-height: 22px;
@@ -371,108 +370,11 @@ h3 {
 
 .playerPanels {
   display: grid;
-  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+  grid-template-columns: 1fr;
 }
 
-.routeStack {
-  display: grid;
-  align-content: start;
-}
-
-.itemRoute {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
-  max-height: 520px;
-  overflow: auto;
-}
-
-.itemBuy {
-  display: grid;
-  grid-template-columns: 54px 34px 1fr auto;
-  gap: 10px;
-  align-items: center;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: 8px;
-  padding: 8px;
-}
-
-.itemBuy img {
-  width: 34px;
-  height: 34px;
-  border-radius: 6px;
-  object-fit: cover;
-  background: #2e3328;
-  border: 1px solid transparent;
-  box-sizing: border-box;
-}
-
-.itemInfo {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.imbueBadge {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  border: 1px solid rgba(164, 111, 218, 0.42);
-  background: rgba(164, 111, 218, 0.13);
-  color: #e4d0f7;
-  border-radius: 5px;
-  padding: 2px 6px;
-  font-size: 12px;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.itemBuy.weaponItem {
-  border-color: rgba(224, 138, 64, 0.72);
-  background: rgba(50, 31, 18, 0.74);
-}
-
-.itemBuy.weaponItem img {
-  border-color: #e08a40;
-  box-shadow: 0 0 0 2px rgba(224, 138, 64, 0.18);
-}
-
-.itemBuy.vitalityItem {
-  border-color: rgba(112, 198, 117, 0.72);
-  background: rgba(22, 43, 25, 0.74);
-}
-
-.itemBuy.vitalityItem img {
-  border-color: #70c675;
-  box-shadow: 0 0 0 2px rgba(112, 198, 117, 0.18);
-}
-
-.itemBuy.spiritItem {
-  border-color: rgba(164, 111, 218, 0.72);
-  background: rgba(39, 27, 55, 0.74);
-}
-
-.itemBuy.spiritItem img {
-  border-color: #a46fda;
-  box-shadow: 0 0 0 2px rgba(164, 111, 218, 0.18);
-}
-
-.nwEstimate {
-  display: grid;
-  gap: 2px;
-  justify-items: end;
-  white-space: nowrap;
-}
-
-.abilityBuy {
-  border-color: rgba(112, 198, 170, 0.22);
-}
-
-.abilityStep.unlock {
-  border-color: rgba(216, 195, 91, 0.32);
-  background: rgba(216, 195, 91, 0.12);
-  color: #f4e7a2;
+.buildTimelineBlock {
+  grid-column: 1 / -1;
 }
 
 .chartTabs {
@@ -532,7 +434,7 @@ h3 {
 
 .timelineRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.78fr);
+  grid-template-columns: minmax(0, 1.22fr) minmax(185px, 0.52fr) minmax(145px, 0.36fr);
   gap: 8px;
   align-items: stretch;
 }
@@ -599,12 +501,13 @@ h3 {
   align-self: stretch;
 }
 
-.windowLane:empty {
+.windowLane:empty,
+.summaryLane:empty {
   border-left: 1px solid rgba(216, 195, 91, 0.08);
 }
 
 .timelineEvent.windowEvent {
-  grid-template-columns: 90px 34px 1fr;
+  grid-template-columns: 90px 1fr;
   min-height: 52px;
   height: 100%;
   align-self: stretch;
@@ -613,10 +516,29 @@ h3 {
   background: linear-gradient(135deg, rgba(22, 32, 50, 0.78), rgba(20, 39, 34, 0.78));
 }
 
+.timelineEvent.summaryEvent {
+  grid-template-columns: 82px 1fr;
+  min-height: 52px;
+  height: 100%;
+  align-self: stretch;
+  padding: 8px 9px;
+  border-color: rgba(216, 195, 91, 0.5);
+  background: rgba(38, 35, 20, 0.72);
+}
+
 .timelineEvent.windowEvent img,
-.timelineEvent.windowEvent .timelineIcon {
+.timelineEvent.windowEvent .timelineIcon,
+.timelineEvent.summaryEvent .timelineIcon {
   width: 34px;
   height: 34px;
+}
+
+.timelineEvent.summaryEvent .timelineIcon {
+  width: 28px;
+  height: 28px;
+  color: #f1e9b8;
+  border-color: rgba(216, 195, 91, 0.32);
+  background: rgba(216, 195, 91, 0.1);
 }
 
 .timelineEvent img {
@@ -786,11 +708,13 @@ h3 {
   .timelineMainGroup.sameTimeGroup,
   .timelineMainGroup.sameTimeGroup .timelineEvent,
   .timelineEvent,
-  .timelineEvent.windowEvent {
+  .timelineEvent.windowEvent,
+  .timelineEvent.summaryEvent {
     grid-template-columns: 1fr;
   }
 
-  .timelineEvent.windowEvent {
+  .timelineEvent.windowEvent,
+  .timelineEvent.summaryEvent {
     height: auto;
   }
 

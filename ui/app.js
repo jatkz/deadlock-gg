@@ -27,11 +27,6 @@ const el = {
   featuredStats: document.querySelector("#featuredStats"),
   scoreboard: document.querySelector("#scoreboard"),
   scoreNote: document.querySelector("#scoreNote"),
-  routeTitle: document.querySelector("#routeTitle"),
-  routeSubtitle: document.querySelector("#routeSubtitle"),
-  itemRoute: document.querySelector("#itemRoute"),
-  abilitySubtitle: document.querySelector("#abilitySubtitle"),
-  abilityRoute: document.querySelector("#abilityRoute"),
   timelineChart: document.querySelector("#timelineChart"),
   timelineToggles: document.querySelectorAll(".timelineToggle"),
   fullTimeline: document.querySelector("#fullTimeline"),
@@ -52,6 +47,7 @@ const metricLabels = {
 const FILTER_STORAGE_KEY = "deadlockMatchUiFilters";
 const TIMELINE_EVENT_TYPES = ["item", "ability", "kill", "death", "assist", "neutral"];
 const SEPARATE_SELL_EVENT_SECONDS = 60;
+const SUMMARY_WINDOW_SECONDS = 180;
 
 function fmt(value) {
   if (value === null || value === undefined || value === "") return "-";
@@ -320,26 +316,9 @@ function renderPlayerRow(player) {
 function renderSelectedPlayer(player) {
   const { abilityItems, shopItems } = timelineParts(player);
 
-  el.routeTitle.textContent = `${player.hero_name || "Hero"} shop items`;
-  el.routeSubtitle.textContent = `${shopItems.length} purchases`;
-  el.itemRoute.innerHTML = shopItems.length
-    ? shopItems.map(renderShopItem).join("")
-    : `<p class="subtle">No shop item purchases were stored for this player.</p>`;
-
-  el.abilitySubtitle.textContent = `${abilityItems.length} events`;
-  el.abilityRoute.innerHTML = abilityItems.length
-    ? abilityItems.map(renderAbilityItem).join("")
-    : `<p class="subtle">No ability order rows were stored for this player.</p>`;
-
   renderChart(player);
   renderFullTimeline(player, shopItems, abilityItems);
   renderFinalStats(player);
-}
-
-function renderNetWorthEstimate(label, estimate) {
-  if (!estimate || estimate.value === null || estimate.value === undefined) return "";
-  const sampleTime = estimate.timeText ? ` @ ${estimate.timeText}` : "";
-  return `<span>${label} ~${fmt(estimate.value)} NW${sampleTime}</span>`;
 }
 
 function itemCostLabel(item) {
@@ -367,47 +346,6 @@ function shopItemTypeClass(item) {
   if (slot.includes("vitality")) return "vitalityItem";
   if (slot.includes("spirit")) return "spiritItem";
   return "";
-}
-
-function renderShopItem(item) {
-  const netWorthLines = [
-    renderNetWorthEstimate("buy", item.estimatedNetWorthAtBuy),
-    item.sold_time_s ? renderNetWorthEstimate("sell", item.estimatedNetWorthAtSell) : "",
-  ].filter(Boolean).join("");
-  const imbue = imbueLabel(item);
-  const itemMeta = [
-    item.asset?.slot || item.asset?.type || "shop",
-    itemCostLabel(item),
-    item.sold_time_s ? `sold ${mmss(item.sold_time_s)}` : "",
-  ].filter(Boolean).join(" · ");
-  return `
-    <div class="itemBuy ${shopItemTypeClass(item)}">
-      <span class="meta">${item.timeText || mmss(item.game_time_s)}</span>
-      <img src="${item.asset?.image || ""}" alt="">
-      <span class="itemInfo">
-        <strong>${item.item_name || item.asset?.name || item.item_id || "Unknown item"}</strong>
-        <span class="meta">${itemMeta}</span>
-        ${imbue ? `<span class="imbueBadge">${imbue}</span>` : ""}
-      </span>
-      <span class="meta nwEstimate">${netWorthLines || "-"}</span>
-    </div>
-  `;
-}
-
-function renderAbilityItem(item) {
-  const step = item.abilityStep || (Number(item.upgrade_id || 0) === 0 ? "unlock" : "upgrade");
-  const rankLabel = abilityRankLabel(item);
-  return `
-    <div class="itemBuy abilityBuy">
-      <span class="meta">${item.timeText || mmss(item.game_time_s)}</span>
-      <img src="${item.asset?.image || ""}" alt="">
-      <span>
-        <strong>${item.item_name || item.asset?.name || item.item_id || "Unknown ability"}</strong>
-        <span class="meta">${[step, rankLabel].filter(Boolean).join(" · ")}</span>
-      </span>
-      <span class="abilityStep ${step}">${rankLabel || step}</span>
-    </div>
-  `;
 }
 
 function chartSeries(metric) {
@@ -633,6 +571,7 @@ function windowTimelineEvents(player) {
     events.push({
       type: "window",
       lane: "window",
+      noIcon: true,
       startTime: Number(previous.time_stamp_s || 0),
       endTime: Number(current.time_stamp_s || 0),
       time: Number(current.time_stamp_s || 0),
@@ -644,11 +583,62 @@ function windowTimelineEvents(player) {
   return events;
 }
 
+function sampleTime(sample) {
+  return Number(sample?.time_stamp_s || 0);
+}
+
+function sampleAtOrBefore(samples, time) {
+  let found = null;
+  for (const sample of samples) {
+    if (sampleTime(sample) <= time) {
+      found = sample;
+    } else {
+      break;
+    }
+  }
+  return found;
+}
+
+function summaryTimelineEvents(player) {
+  const samples = [...(player.stats || [])].sort((a, b) => sampleTime(a) - sampleTime(b));
+  if (!samples.length) return [];
+
+  const maxTime = Math.max(...samples.map(sampleTime));
+  const events = [];
+  for (let startTime = 0; startTime < maxTime; startTime += SUMMARY_WINDOW_SECONDS) {
+    const endTime = Math.min(startTime + SUMMARY_WINDOW_SECONDS, maxTime);
+    const previous = sampleAtOrBefore(samples, startTime) || {};
+    const current = sampleAtOrBefore(samples, endTime) || samples[samples.length - 1];
+    const kills = statDelta(current, previous, "kills");
+    const deaths = statDelta(current, previous, "deaths");
+    const assists = statDelta(current, previous, "assists");
+    const netWorth = Number(current?.net_worth || 0);
+    const netWorthGain = statDelta(current, previous, "net_worth");
+
+    events.push({
+      type: "summary",
+      lane: "summary",
+      noIcon: true,
+      startTime,
+      endTime,
+      time: endTime,
+      timeLabel: `${mmss(startTime)}-${mmss(endTime)}`,
+      title: `Total ${fmt(current?.kills || 0)}/${fmt(current?.deaths || 0)}/${fmt(current?.assists || 0)} KDA`,
+      chips: [
+        fullTimelineChip(`window +${fmt(kills)}/${fmt(deaths)}/${fmt(assists)} KDA`),
+        fullTimelineChip(`${fmt(netWorth)} NW`),
+        netWorthGain ? fullTimelineChip(`+${fmt(netWorthGain)} NW`) : "",
+      ].filter(Boolean).join(""),
+    });
+  }
+  return events;
+}
+
 function timelineEventCard(event) {
   return `
-    <div class="timelineEvent ${event.type}Event ${event.lane === "window" ? "windowEvent" : ""} ${event.typeClass || ""}">
+    <div class="timelineEvent ${event.type}Event ${event.lane === "window" ? "windowEvent" : ""} ${event.lane === "summary" ? "summaryEvent" : ""} ${event.typeClass || ""}">
       <span class="combatTime">${event.timeLabel || mmss(event.time)}</span>
-      ${event.image ? `<img src="${event.image}" alt="">` : `<span class="timelineIcon">${event.type}</span>`}
+      ${event.noIcon ? "" : event.image ? `<img src="${event.image}" alt="">` : `<span class="timelineIcon">${event.iconLabel || event.type}</span>`}
       <span>
         <strong>${event.title}</strong>
         <span class="combatDeltas">${event.chips}</span>
@@ -658,20 +648,33 @@ function timelineEventCard(event) {
 }
 
 function timelineRows(events) {
-  const mainEvents = events.filter((event) => event.lane !== "window");
+  const mainEvents = events.filter((event) => event.lane !== "window" && event.lane !== "summary");
   const windowEvents = events.filter((event) => event.lane === "window");
-  const rows = windowEvents.map((event) => ({
+  const summaryEvents = events.filter((event) => event.lane === "summary");
+  const rows = (summaryEvents.length ? summaryEvents : windowEvents).map((event) => ({
     startTime: event.startTime ?? event.time,
     endTime: event.endTime ?? event.time,
     main: [],
-    windows: [event],
+    windows: event.lane === "window" ? [event] : [],
+    summaries: event.lane === "summary" ? [event] : [],
   }));
+
+  for (const event of windowEvents) {
+    if (!summaryEvents.length) continue;
+    const matchingRow = rows.find((row) => event.time >= row.startTime && event.time <= row.endTime);
+    if (matchingRow) {
+      matchingRow.windows.push(event);
+    } else {
+      rows.push({ startTime: event.time, endTime: event.time, main: [], windows: [event], summaries: [] });
+    }
+  }
+
   for (const event of mainEvents) {
     const matchingRow = rows.find((row) => event.time >= row.startTime && event.time <= row.endTime);
     if (matchingRow) {
       matchingRow.main.push(event);
     } else {
-      rows.push({ startTime: event.time, endTime: event.time, main: [event], windows: [] });
+      rows.push({ startTime: event.time, endTime: event.time, main: [event], windows: [], summaries: [] });
     }
   }
   return rows
@@ -679,6 +682,7 @@ function timelineRows(events) {
       ...row,
       main: row.main.sort((a, b) => a.time - b.time || String(a.type).localeCompare(String(b.type))),
       windows: row.windows.sort((a, b) => a.time - b.time),
+      summaries: row.summaries.sort((a, b) => a.time - b.time),
     }))
     .sort((a, b) => a.startTime - b.startTime);
 }
@@ -707,8 +711,9 @@ function renderFullTimeline(player, shopItems, abilityItems) {
     ...abilityTimelineEvents(abilityItems),
     ...killDeathTimelineEvents(player),
     ...windowTimelineEvents(player),
+    ...summaryTimelineEvents(player),
   ].sort((a, b) => a.time - b.time || String(a.type).localeCompare(String(b.type)));
-  const events = allEvents.filter((event) => event.lane === "window" || state.timelineEventTypes.has(event.type));
+  const events = allEvents.filter((event) => event.lane === "window" || event.lane === "summary" || state.timelineEventTypes.has(event.type));
 
   if (!allEvents.length) {
     el.fullTimeline.innerHTML = `<p class="subtle">No build or combat timeline events stored for this player.</p>`;
@@ -723,6 +728,7 @@ function renderFullTimeline(player, shopItems, abilityItems) {
     <div class="timelineRow">
       <div class="timelineLane mainLane">${groupedMainTimelineCards(row.main)}</div>
       <div class="timelineLane windowLane">${row.windows.map(timelineEventCard).join("")}</div>
+      <div class="timelineLane summaryLane">${row.summaries.map(timelineEventCard).join("")}</div>
     </div>
   `).join("");
 }
