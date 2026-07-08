@@ -41,6 +41,10 @@
             Hero or match
             <input id="searchInput" type="search" placeholder="Drifter, Calico, 924...">
           </label>
+          <label>
+            Enemy lane hero
+            <input id="enemyLaneHeroInput" type="search" placeholder="Wraith, Abrams, 64...">
+          </label>
           <label class="checkboxFilter">
             <input id="savedOnlyInput" type="checkbox">
             Saved matches only
@@ -76,7 +80,14 @@
           <section class="sectionBlock">
             <div class="sectionTitle">
               <h3>Players</h3>
-              <span id="scoreNote"></span>
+              <div class="scoreControls">
+                <select id="scoreboardSortInput" aria-label="Sort players">
+                  <option value="lane">Lane</option>
+                  <option value="score">Score</option>
+                  <option value="slot">Slot</option>
+                </select>
+                <span id="scoreNote"></span>
+              </div>
             </div>
             <div id="scoreboard" class="scoreboard"></div>
           </section>

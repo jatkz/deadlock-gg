@@ -4,6 +4,7 @@ const state = {
   selectedMatch: null,
   selectedPlayerSlot: null,
   metric: "player_damage",
+  scoreboardSort: "lane",
   timelineEventTypes: new Set(["item", "ability", "kill", "death", "assist", "neutral"]),
 };
 
@@ -16,6 +17,7 @@ const el = {
   maxDurationInput: document.querySelector("#maxDurationInput"),
   minKdaInput: document.querySelector("#minKdaInput"),
   searchInput: document.querySelector("#searchInput"),
+  enemyLaneHeroInput: document.querySelector("#enemyLaneHeroInput"),
   savedOnlyInput: document.querySelector("#savedOnlyInput"),
   refreshButton: document.querySelector("#refreshButton"),
   performanceList: document.querySelector("#performanceList"),
@@ -29,6 +31,7 @@ const el = {
   saveMatchButton: document.querySelector("#saveMatchButton"),
   saveMatchStatus: document.querySelector("#saveMatchStatus"),
   scoreboard: document.querySelector("#scoreboard"),
+  scoreboardSortInput: document.querySelector("#scoreboardSortInput"),
   scoreNote: document.querySelector("#scoreNote"),
   timelineChart: document.querySelector("#timelineChart"),
   timelineToggles: document.querySelectorAll(".timelineToggle"),
@@ -98,7 +101,9 @@ function currentFilters() {
     maxDuration: el.maxDurationInput.value,
     minKda: el.minKdaInput.value,
     search: el.searchInput.value,
+    enemyLaneHero: el.enemyLaneHeroInput.value,
     savedOnly: el.savedOnlyInput.checked,
+    scoreboardSort: state.scoreboardSort,
     timelineEventTypes: Array.from(state.timelineEventTypes),
   };
 }
@@ -115,7 +120,12 @@ function applyFilters(filters) {
   if (filters.maxDuration !== undefined) el.maxDurationInput.value = String(filters.maxDuration);
   if (filters.minKda !== undefined) el.minKdaInput.value = String(filters.minKda);
   if (filters.search !== undefined) el.searchInput.value = String(filters.search);
+  if (filters.enemyLaneHero !== undefined) el.enemyLaneHeroInput.value = String(filters.enemyLaneHero);
   if (filters.savedOnly !== undefined) el.savedOnlyInput.checked = Boolean(filters.savedOnly);
+  if (["lane", "score", "slot"].includes(filters.scoreboardSort)) {
+    state.scoreboardSort = filters.scoreboardSort;
+    el.scoreboardSortInput.value = filters.scoreboardSort;
+  }
   if (Array.isArray(filters.timelineEventTypes)) {
     state.timelineEventTypes = new Set(
       filters.timelineEventTypes.filter((type) => TIMELINE_EVENT_TYPES.includes(type))
@@ -189,9 +199,11 @@ async function loadPerformances() {
   const minDurationS = minuteInputToSeconds(el.minDurationInput);
   const maxDurationS = minuteInputToSeconds(el.maxDurationInput);
   const minKda = numericInputValue(el.minKdaInput);
+  const enemyLaneHero = el.enemyLaneHeroInput.value.trim();
   if (minDurationS) params.set("minDurationS", minDurationS);
   if (maxDurationS) params.set("maxDurationS", maxDurationS);
   if (minKda) params.set("minKda", minKda);
+  if (enemyLaneHero) params.set("enemyLaneHero", enemyLaneHero);
   if (el.savedOnlyInput.checked) params.set("savedOnly", "1");
   const payload = await getJson(`/api/performances?${params.toString()}`);
   state.performances = payload.items;
@@ -220,11 +232,13 @@ function renderPerformanceList() {
     ) {
       button.classList.add("active");
     }
+    const laneMatchup = enemyLaneText(perf);
     button.innerHTML = `
       <img class="heroIcon" src="${perf.hero?.icon || ""}" alt="">
       <span class="perfMain">
         <strong>${perf.heroName || "Unknown hero"}</strong>
         <span class="meta">Match ${perf.matchId} · ${perf.durationText} · <span class="${perf.won ? "win" : "loss"}">${perf.won ? "Win" : "Loss"}</span></span>
+        ${laneMatchup ? `<span class="meta">${laneMatchup}</span>` : ""}
         <span class="meta">${fmt(perf.kills)}/${fmt(perf.deaths)}/${fmt(perf.assists)} · ${fmt(perf.kdaRatio)} KDA · ${fmt(perf.netWorth)} NW · ${fmt(perf.playerDamage)} dmg</span>
         <span class="reasonTags">${(perf.reasons || []).map((reason) => `<span class="reasonTag">${reason}</span>`).join("")}</span>
       </span>
@@ -337,12 +351,48 @@ function renderScoreboard(players) {
       </div>
     `;
 
-    for (const player of teamPlayers.slice().sort((a, b) => Number(b.score) - Number(a.score))) {
+    for (const player of teamPlayers.slice().sort(comparePlayersForScoreboard)) {
       column.appendChild(renderPlayerRow(player));
     }
 
     el.scoreboard.appendChild(column);
   }
+}
+
+function laneLabel(player) {
+  const lane = Number(player?.assigned_lane ?? player?.assignedLane);
+  if (!Number.isFinite(lane) || lane <= 0) return "Lane ?";
+  return `Lane ${lane}`;
+}
+
+function enemyLaneText(perf) {
+  const heroes = (perf.enemyLaneHeroes || [])
+    .map((hero) => hero.heroName || hero.name)
+    .filter(Boolean);
+  if (!heroes.length) return "";
+  return `${laneLabel(perf)} vs ${heroes.join(", ")}`;
+}
+
+function comparePlayersByLane(a, b) {
+  const laneA = Number(a.assigned_lane);
+  const laneB = Number(b.assigned_lane);
+  const safeLaneA = Number.isFinite(laneA) ? laneA : Number.MAX_SAFE_INTEGER;
+  const safeLaneB = Number.isFinite(laneB) ? laneB : Number.MAX_SAFE_INTEGER;
+  return safeLaneA - safeLaneB || Number(a.player_slot) - Number(b.player_slot);
+}
+
+function comparePlayersByScore(a, b) {
+  return Number(b.score) - Number(a.score) || Number(a.player_slot) - Number(b.player_slot);
+}
+
+function comparePlayersBySlot(a, b) {
+  return Number(a.player_slot) - Number(b.player_slot);
+}
+
+function comparePlayersForScoreboard(a, b) {
+  if (state.scoreboardSort === "score") return comparePlayersByScore(a, b);
+  if (state.scoreboardSort === "slot") return comparePlayersBySlot(a, b);
+  return comparePlayersByLane(a, b);
 }
 
 function renderPlayerRow(player) {
@@ -353,7 +403,7 @@ function renderPlayerRow(player) {
     <img src="${player.hero?.icon || ""}" alt="">
     <span>
       <strong>${player.hero_name || "Unknown hero"}</strong>
-      <span class="meta">${player.team || "team"} · ${fmt(player.kills)}/${fmt(player.deaths)}/${fmt(player.assists)} · ${fmt(player.net_worth)} NW</span>
+      <span class="meta">${player.team || "team"} · ${laneLabel(player)} · ${fmt(player.kills)}/${fmt(player.deaths)}/${fmt(player.assists)} · ${fmt(player.net_worth)} NW</span>
     </span>
     <span class="perfScore">
       <strong>${pct(player.percentile)}</strong>
@@ -940,7 +990,13 @@ el.minDurationInput.addEventListener("input", debounce(saveFiltersAndLoadPerform
 el.maxDurationInput.addEventListener("input", debounce(saveFiltersAndLoadPerformances));
 el.minKdaInput.addEventListener("input", debounce(saveFiltersAndLoadPerformances));
 el.searchInput.addEventListener("input", debounce(saveFiltersAndLoadPerformances));
+el.enemyLaneHeroInput.addEventListener("input", debounce(saveFiltersAndLoadPerformances));
 el.savedOnlyInput.addEventListener("change", saveFiltersAndLoadPerformances);
+el.scoreboardSortInput.addEventListener("change", () => {
+  state.scoreboardSort = el.scoreboardSortInput.value;
+  saveFilters();
+  if (state.selectedMatch?.players) renderScoreboard(state.selectedMatch.players);
+});
 el.refreshButton.addEventListener("click", loadPerformances);
 el.saveMatchButton.addEventListener("click", saveSelectedMatch);
 

@@ -470,12 +470,13 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
         max_duration_s = optional_int(first(params, "maxDurationS"))
         min_kda = optional_float(first(params, "minKda"))
         search = (first(params, "search") or "").strip().lower()
+        enemy_lane_hero = (first(params, "enemyLaneHero") or "").strip().lower()
         saved_only = truthy(first(params, "savedOnly"))
         saved_match_ids = set(load_saved_match_records(self.state.saved_matches_file)) if saved_only else set()
 
         query = """
             SELECT
-              p.match_id, p.player_slot, p.account_id, p.team, p.hero_id, p.hero_name,
+              p.match_id, p.player_slot, p.account_id, p.team, p.assigned_lane, p.hero_id, p.hero_name,
               p.kills, p.deaths, p.assists, p.net_worth, p.last_hits, p.denies,
               p.player_level, p.ability_points, p.final_stats_json,
               m.start_time, m.duration_s, m.game_mode, m.match_mode, m.winning_team,
@@ -487,8 +488,24 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
         with connect(self.state.db_path) as connection:
             rows = [dict(row) for row in connection.execute(query)]
 
+        lane_players: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        for row in rows:
+            lane_key = (as_int(row.get("match_id")), as_int(row.get("assigned_lane")))
+            lane_players.setdefault(lane_key, []).append(row)
+
         performances = []
         for row in rows:
+            enemy_lane_rows = [
+                enemy
+                for enemy in lane_players.get((as_int(row.get("match_id")), as_int(row.get("assigned_lane"))), [])
+                if enemy.get("team") != row.get("team")
+            ]
+            if enemy_lane_hero and not any(
+                enemy_lane_hero in (enemy.get("hero_name") or "").lower()
+                or enemy_lane_hero in str(enemy.get("hero_id"))
+                for enemy in enemy_lane_rows
+            ):
+                continue
             if saved_only and as_int(row.get("match_id")) not in saved_match_ids:
                 continue
             duration_s = as_int(row.get("duration_s"))
@@ -517,6 +534,14 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
                     "heroName": row["hero_name"],
                     "hero": self.state.hero_assets.get(as_int(row["hero_id"]), {}),
                     "team": row["team"],
+                    "assignedLane": row["assigned_lane"],
+                    "enemyLaneHeroes": [
+                        {
+                            "heroId": enemy.get("hero_id"),
+                            "heroName": enemy.get("hero_name"),
+                        }
+                        for enemy in enemy_lane_rows
+                    ],
                     "won": bool(row["won"]),
                     "score": score,
                     "percentile": percentile,
@@ -543,6 +568,7 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
             "minDurationS": min_duration_s,
             "maxDurationS": max_duration_s,
             "minKda": min_kda,
+            "enemyLaneHero": enemy_lane_hero,
             "savedOnly": saved_only,
         }
 
