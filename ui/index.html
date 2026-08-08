@@ -14,7 +14,11 @@
             <h1>Deadlock Match Detail</h1>
             <p id="datasetSummary">Loading dataset...</p>
           </div>
-          <button id="refreshButton" type="button" title="Refresh performances">Refresh</button>
+          <div class="topActions">
+            <button id="heroDataButton" type="button">Hero Data</button>
+            <button id="itemLabButton" type="button">Item Lab</button>
+            <button id="refreshButton" type="button" title="Refresh performances">Refresh</button>
+          </div>
         </header>
 
         <div class="filters">
@@ -63,6 +67,84 @@
         <div id="emptyState" class="emptyState">
           Select a performance to inspect the match, build route, combat timeline, and final stats.
         </div>
+        <div id="heroData" class="heroData hidden">
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Hero Data</h3>
+              <span id="heroDataSummary">Cached asset manifest</span>
+            </div>
+            <div class="heroDataControls">
+              <label>
+                Hero
+                <input id="heroDataInput" type="search" list="heroDataOptions" placeholder="Silver, Infernus, 80">
+                <datalist id="heroDataOptions"></datalist>
+              </label>
+              <button id="loadHeroDataButton" type="button">Load Hero</button>
+              <label class="checkboxFilter">
+                <input id="heroRawToggle" type="checkbox">
+                Raw details
+              </label>
+            </div>
+          </section>
+          <div id="heroDataContent"></div>
+        </div>
+        <div id="itemLab" class="itemLab hidden">
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Item Lab</h3>
+              <span id="itemLabSummary">Local matchup data</span>
+            </div>
+            <div class="itemLabControls">
+              <label>
+                Your hero
+                <input id="itemHeroInput" type="search" placeholder="Wraith, Drifter, 7">
+              </label>
+              <label>
+                Enemy heroes
+                <input id="itemEnemiesInput" type="search" placeholder="Dynamo, Abrams, 11">
+              </label>
+              <label>
+                Owned items
+                <input id="ownedItemsInput" type="search" placeholder="Extra Regen, Headshot Booster">
+              </label>
+              <label>
+                Item search
+                <input id="itemSearchInput" type="search" placeholder="Quicksilver, Healbane">
+              </label>
+              <label>
+                Game minute
+                <input id="gameMinuteInput" type="number" inputmode="decimal" min="0" step="0.5" value="12">
+              </label>
+              <label>
+                Min samples
+                <input id="itemMinMatchesInput" type="number" inputmode="numeric" min="1" step="1" value="20">
+              </label>
+              <label>
+                Enemy scope
+                <select id="enemyScopeInput">
+                  <option value="team">Enemy team</option>
+                  <option value="lane">Lane opponent</option>
+                </select>
+              </label>
+              <label class="checkboxFilter">
+                <input id="includeAbilitiesInput" type="checkbox">
+                Include abilities
+              </label>
+            </div>
+            <div class="itemLabActions">
+              <button id="discoverItemsButton" type="button">Discover</button>
+              <button id="recommendItemsButton" type="button">Recommend Now</button>
+            </div>
+          </section>
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3 id="itemResultsTitle">Recommendations</h3>
+              <span id="itemResultCount"></span>
+            </div>
+            <div id="itemResults" class="itemResults"></div>
+            <div id="itemEvidence" class="itemEvidence hidden"></div>
+          </section>
+        </div>
         <div id="matchDetail" class="matchDetail hidden">
           <section class="matchHero">
             <img id="featuredHeroCard" alt="">
@@ -90,6 +172,66 @@
               </div>
             </div>
             <div id="scoreboard" class="scoreboard"></div>
+          </section>
+
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Ability Sheet</h3>
+              <div class="scoreControls">
+                <button id="toggleAbilitySheetButton" type="button">Minimize</button>
+                <span id="abilitySheetSummary">12-player ability snapshot</span>
+              </div>
+            </div>
+            <div id="abilitySheetBody">
+              <div class="abilitySheetControls">
+                <label>
+                  Game minute
+                  <input id="abilitySheetMinuteInput" type="number" inputmode="decimal" min="0" step="0.5" value="12">
+                </label>
+                <label class="checkboxFilter">
+                  <input id="abilitySheetScalingInput" type="checkbox">
+                  Include known scaling
+                </label>
+                <button id="loadAbilitySheetButton" type="button">Load Sheet</button>
+              </div>
+              <div id="abilitySheet" class="abilitySheet"></div>
+            </div>
+          </section>
+
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Match Item Lab</h3>
+              <div class="scoreControls">
+                <button id="toggleMatchItemLabButton" type="button">Minimize</button>
+                <span id="matchItemLabSummary">Recommendations from this match context</span>
+              </div>
+            </div>
+            <div id="matchItemLabBody">
+              <div class="itemLabControls matchItemLabControls">
+                <label>
+                  Target player
+                  <select id="matchItemPlayerInput"></select>
+                </label>
+                <label>
+                  Game minute
+                  <input id="matchItemMinuteInput" type="number" inputmode="decimal" min="0" step="0.5" value="12">
+                </label>
+                <label>
+                  Min samples
+                  <input id="matchItemMinMatchesInput" type="number" inputmode="numeric" min="1" step="1" value="20">
+                </label>
+                <label class="checkboxFilter">
+                  <input id="matchItemIncludeAbilitiesInput" type="checkbox">
+                  Include abilities
+                </label>
+              </div>
+              <div id="matchItemContext" class="matchItemContext"></div>
+              <div class="itemLabActions">
+                <button id="loadMatchItemLabButton" type="button">Recommend for Player</button>
+              </div>
+              <div id="matchItemResults" class="itemResults"></div>
+              <div id="matchItemEvidence" class="itemEvidence hidden"></div>
+            </div>
           </section>
 
           <section class="playerPanels">

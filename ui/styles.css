@@ -67,6 +67,13 @@ button.active {
   gap: 12px;
 }
 
+.topActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 h1,
 h2,
 h3,
@@ -116,7 +123,10 @@ h3 {
 }
 
 .filters input[type="search"],
-.filters input[type="number"] {
+.filters input[type="number"],
+.heroDataControls input,
+.itemLabControls input,
+.itemLabControls select {
   width: 100%;
   border: 1px solid var(--line);
   background: #0f120d;
@@ -223,6 +233,15 @@ h3 {
 
 .perfScore strong {
   color: var(--accent);
+}
+
+.rankLabel {
+  display: block;
+  color: #d9dcc7;
+  font-size: 12px;
+  line-height: 1.25;
+  margin-top: 2px;
+  white-space: nowrap;
 }
 
 .win {
@@ -352,9 +371,548 @@ h3 {
   padding: 0 8px;
 }
 
+.abilitySheetControls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.abilitySheetControls label {
+  display: grid;
+  gap: 7px;
+  color: #d8d6c5;
+  font-size: 13px;
+}
+
+.abilitySheetControls input[type="number"] {
+  width: 130px;
+  border: 1px solid var(--line);
+  background: #0f120d;
+  color: var(--text);
+  border-radius: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.abilitySheet {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.abilitySheetTableWrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f120d;
+}
+
+.abilitySheetTable {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.abilitySheetTable th,
+.abilitySheetTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 9px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.abilitySheetTable th {
+  color: var(--muted);
+  background: #151812;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.sheetSortButton {
+  min-height: 22px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sheetSortButton:hover,
+.sheetSortButton.active {
+  color: #f5f1d2;
+}
+
+.abilitySheetTable tbody tr:hover {
+  background: rgba(216, 195, 91, 0.06);
+}
+
+.lockedAbility {
+  opacity: 0.55;
+}
+
+.sheetHero {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.sheetHero img {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: #2e3328;
+}
+
+.sheetAbility {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: #f5f1d2;
+  font-weight: 700;
+  cursor: help;
+}
+
+.abilityTooltip {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  top: calc(100% + 8px);
+  width: min(520px, 80vw);
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid rgba(216, 195, 91, 0.36);
+  background: #151812;
+  box-shadow: var(--shadow);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text);
+  white-space: normal;
+}
+
+.sheetAbility:hover .abilityTooltip,
+.sheetAbility:focus-within .abilityTooltip {
+  display: grid;
+  gap: 8px;
+}
+
 .sectionBlock {
   padding: 22px 28px;
   border-bottom: 1px solid var(--line);
+}
+
+.itemLabControls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.itemLabControls label {
+  display: grid;
+  gap: 7px;
+  color: #d8d6c5;
+  font-size: 13px;
+}
+
+.itemLabActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.matchItemContext {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.matchContextGroup {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.matchContextGroup > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding-top: 5px;
+}
+
+.matchContextGroup > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.matchContextChip {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  border: 1px solid var(--line);
+  background: rgba(245, 241, 210, 0.05);
+  border-radius: 6px;
+  padding: 3px 8px 3px 4px;
+  color: #ece9dd;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.matchContextChip img {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #2e3328;
+}
+
+.heroDataControls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.heroDataControls label {
+  display: grid;
+  gap: 7px;
+  color: #d8d6c5;
+  font-size: 13px;
+}
+
+.heroDataHero {
+  position: relative;
+  min-height: 280px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.heroDataHero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.5;
+}
+
+.heroDataHero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(17, 19, 15, 0.98), rgba(17, 19, 15, 0.7) 55%, rgba(17, 19, 15, 0.28));
+}
+
+.heroDataOverlay {
+  position: relative;
+  z-index: 1;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 34px;
+}
+
+.heroDescription {
+  max-width: 900px;
+  color: #d8d6c5;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.heroStats {
+  display: grid;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.heroStatGroup {
+  display: grid;
+  gap: 10px;
+}
+
+.heroStatGroup h4 {
+  margin: 0;
+  color: #f5f1d2;
+  font-size: 13px;
+}
+
+.heroStatGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(118px, 1fr));
+  gap: 10px;
+}
+
+.heroAbilityGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.heroAbilityCard {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.heroAbilityCard img,
+.heroAbilityIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #2e3328;
+}
+
+.heroAbilityIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(216, 195, 91, 0.24);
+  color: #f5f1d2;
+  font-weight: 700;
+}
+
+.heroAbilityTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.heroAbilityTitle strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.abilityUpgrades {
+  display: grid;
+  gap: 5px;
+  margin: 9px 0;
+}
+
+.abilityUpgradeHeader {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.abilityUpgrade {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  border: 1px solid rgba(216, 195, 91, 0.2);
+  background: rgba(216, 195, 91, 0.07);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.abilityUpgrade span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: rgba(216, 195, 91, 0.14);
+  color: #f5f1d2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.abilityUpgrade strong {
+  color: #ece9dd;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.abilityUpgrade em,
+.abilityUpgrade small {
+  display: block;
+  font-style: normal;
+}
+
+.abilityUpgrade small {
+  margin-top: 3px;
+  color: #f1e9b8;
+}
+
+.linkedAbilities {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(112, 198, 170, 0.22);
+}
+
+.linkedAbility {
+  border: 1px solid rgba(112, 198, 170, 0.24);
+  background: rgba(20, 39, 34, 0.44);
+  border-radius: 6px;
+  padding: 9px;
+}
+
+.costBonusGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(82px, 1fr));
+  gap: 8px;
+}
+
+.costBonusBox {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.costBonusBox span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.costBonusBox strong {
+  display: block;
+  margin-top: 3px;
+  color: #f5f1d2;
+}
+
+.rawHeroJson {
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: #0f120d;
+  border-radius: 8px;
+  padding: 12px;
+  color: #d8d6c5;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.itemResults {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.itemResult {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.itemResult img {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #2e3328;
+}
+
+.itemResultMain {
+  min-width: 0;
+}
+
+.itemResultMain strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemResultScore {
+  min-width: 78px;
+  text-align: right;
+}
+
+.itemResultScore strong {
+  display: block;
+  color: var(--accent);
+}
+
+.evidenceButton {
+  margin-top: 5px;
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.itemEvidence {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.evidenceHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.evidenceTable {
+  display: grid;
+  gap: 6px;
+}
+
+.evidenceRow {
+  display: grid;
+  grid-template-columns: 62px 92px 58px 72px minmax(180px, 1.2fr) minmax(180px, 1fr) minmax(84px, 0.6fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 7px 9px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.evidenceHead {
+  min-height: 30px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+button.evidenceRow:hover {
+  border-color: var(--accent-2);
 }
 
 .scoreboard {
@@ -685,6 +1243,13 @@ h3 {
   font-size: 11px;
 }
 
+.deltaChip.soldChip {
+  border-style: dashed;
+  border-color: rgba(224, 107, 95, 0.62);
+  background: rgba(224, 107, 95, 0.11);
+  color: #f0b5ad;
+}
+
 .finalStats {
   margin-top: 14px;
   display: grid;
@@ -739,7 +1304,10 @@ h3 {
   }
 
   .scoreboard,
-  .playerPanels {
+  .playerPanels,
+  .heroDataControls,
+  .heroAbilityGrid,
+  .itemLabControls {
     grid-template-columns: 1fr;
   }
 
@@ -747,6 +1315,7 @@ h3 {
   .timelineMainGroup,
   .timelineMainGroup.sameTimeGroup,
   .timelineMainGroup.sameTimeGroup .timelineEvent,
+  .evidenceRow,
   .timelineEvent,
   .timelineEvent.windowEvent,
   .timelineEvent.summaryEvent {
@@ -759,6 +1328,11 @@ h3 {
   }
 
   .finalStatGrid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .heroStatGrid,
+  .costBonusGrid {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 }

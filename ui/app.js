@@ -1,8 +1,17 @@
 const state = {
   performances: [],
+  heroes: [],
+  itemResultsById: new Map(),
+  matchItemResultsById: new Map(),
   selectedPerformance: null,
   selectedMatch: null,
   selectedPlayerSlot: null,
+  selectedHeroData: null,
+  abilitySheet: null,
+  abilitySheetCollapsed: false,
+  matchItemLabCollapsed: false,
+  matchItemLab: null,
+  abilitySheetSort: { key: "team", direction: "asc" },
   metric: "player_damage",
   scoreboardSort: "lane",
   timelineEventTypes: new Set(["item", "ability", "kill", "death", "assist", "neutral"]),
@@ -19,10 +28,35 @@ const el = {
   searchInput: document.querySelector("#searchInput"),
   enemyLaneHeroInput: document.querySelector("#enemyLaneHeroInput"),
   savedOnlyInput: document.querySelector("#savedOnlyInput"),
+  heroDataButton: document.querySelector("#heroDataButton"),
+  itemLabButton: document.querySelector("#itemLabButton"),
   refreshButton: document.querySelector("#refreshButton"),
   performanceList: document.querySelector("#performanceList"),
   resultCount: document.querySelector("#resultCount"),
   emptyState: document.querySelector("#emptyState"),
+  heroData: document.querySelector("#heroData"),
+  heroDataSummary: document.querySelector("#heroDataSummary"),
+  heroDataInput: document.querySelector("#heroDataInput"),
+  heroDataOptions: document.querySelector("#heroDataOptions"),
+  loadHeroDataButton: document.querySelector("#loadHeroDataButton"),
+  heroRawToggle: document.querySelector("#heroRawToggle"),
+  heroDataContent: document.querySelector("#heroDataContent"),
+  itemLab: document.querySelector("#itemLab"),
+  itemLabSummary: document.querySelector("#itemLabSummary"),
+  itemHeroInput: document.querySelector("#itemHeroInput"),
+  itemEnemiesInput: document.querySelector("#itemEnemiesInput"),
+  ownedItemsInput: document.querySelector("#ownedItemsInput"),
+  itemSearchInput: document.querySelector("#itemSearchInput"),
+  gameMinuteInput: document.querySelector("#gameMinuteInput"),
+  itemMinMatchesInput: document.querySelector("#itemMinMatchesInput"),
+  enemyScopeInput: document.querySelector("#enemyScopeInput"),
+  includeAbilitiesInput: document.querySelector("#includeAbilitiesInput"),
+  discoverItemsButton: document.querySelector("#discoverItemsButton"),
+  recommendItemsButton: document.querySelector("#recommendItemsButton"),
+  itemResultsTitle: document.querySelector("#itemResultsTitle"),
+  itemResultCount: document.querySelector("#itemResultCount"),
+  itemResults: document.querySelector("#itemResults"),
+  itemEvidence: document.querySelector("#itemEvidence"),
   matchDetail: document.querySelector("#matchDetail"),
   featuredHeroCard: document.querySelector("#featuredHeroCard"),
   matchMeta: document.querySelector("#matchMeta"),
@@ -33,6 +67,24 @@ const el = {
   scoreboard: document.querySelector("#scoreboard"),
   scoreboardSortInput: document.querySelector("#scoreboardSortInput"),
   scoreNote: document.querySelector("#scoreNote"),
+  abilitySheetSummary: document.querySelector("#abilitySheetSummary"),
+  abilitySheetMinuteInput: document.querySelector("#abilitySheetMinuteInput"),
+  abilitySheetScalingInput: document.querySelector("#abilitySheetScalingInput"),
+  loadAbilitySheetButton: document.querySelector("#loadAbilitySheetButton"),
+  toggleAbilitySheetButton: document.querySelector("#toggleAbilitySheetButton"),
+  abilitySheetBody: document.querySelector("#abilitySheetBody"),
+  abilitySheet: document.querySelector("#abilitySheet"),
+  matchItemLabSummary: document.querySelector("#matchItemLabSummary"),
+  matchItemPlayerInput: document.querySelector("#matchItemPlayerInput"),
+  matchItemMinuteInput: document.querySelector("#matchItemMinuteInput"),
+  matchItemMinMatchesInput: document.querySelector("#matchItemMinMatchesInput"),
+  matchItemIncludeAbilitiesInput: document.querySelector("#matchItemIncludeAbilitiesInput"),
+  toggleMatchItemLabButton: document.querySelector("#toggleMatchItemLabButton"),
+  matchItemLabBody: document.querySelector("#matchItemLabBody"),
+  loadMatchItemLabButton: document.querySelector("#loadMatchItemLabButton"),
+  matchItemContext: document.querySelector("#matchItemContext"),
+  matchItemResults: document.querySelector("#matchItemResults"),
+  matchItemEvidence: document.querySelector("#matchItemEvidence"),
   timelineChart: document.querySelector("#timelineChart"),
   timelineToggles: document.querySelectorAll(".timelineToggle"),
   fullTimeline: document.querySelector("#fullTimeline"),
@@ -53,6 +105,7 @@ const metricLabels = {
 const FILTER_STORAGE_KEY = "deadlockMatchUiFilters";
 const TIMELINE_EVENT_TYPES = ["item", "ability", "kill", "death", "assist", "neutral"];
 const SEPARATE_SELL_EVENT_SECONDS = 60;
+const GROUP_NEARBY_ITEM_EVENT_SECONDS = 1;
 const SUMMARY_WINDOW_SECONDS = 180;
 
 function fmt(value) {
@@ -62,8 +115,28 @@ function fmt(value) {
   return number.toLocaleString();
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
 function pct(value) {
   return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function rankText(averageBadge) {
+  if (!averageBadge || typeof averageBadge !== "object") return "";
+  return averageBadge.label || "";
+}
+
+function rankMeta(averageBadge) {
+  const label = rankText(averageBadge);
+  return label ? `Rank ${label}` : "Rank unavailable";
 }
 
 function mmss(seconds) {
@@ -92,6 +165,14 @@ function numericInputValue(input) {
   const value = Number(raw);
   if (!Number.isFinite(value) || value < 0) return "";
   return String(value);
+}
+
+function secondsFromMinuteValue(input) {
+  const raw = input.value.trim();
+  if (!raw) return "";
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes < 0) return "";
+  return String(Math.round(minutes * 60));
 }
 
 function currentFilters() {
@@ -233,17 +314,19 @@ function renderPerformanceList() {
       button.classList.add("active");
     }
     const laneMatchup = enemyLaneText(perf);
+    const matchRank = rankText(perf.averageBadge);
     button.innerHTML = `
       <img class="heroIcon" src="${perf.hero?.icon || ""}" alt="">
       <span class="perfMain">
         <strong>${perf.heroName || "Unknown hero"}</strong>
-        <span class="meta">Match ${perf.matchId} · ${perf.durationText} · <span class="${perf.won ? "win" : "loss"}">${perf.won ? "Win" : "Loss"}</span></span>
+        <span class="meta">Match ${perf.matchId} · ${perf.durationText} · <span class="${perf.won ? "win" : "loss"}">${perf.won ? "Win" : "Loss"}</span>${matchRank ? ` · ${matchRank}` : ""}</span>
         ${laneMatchup ? `<span class="meta">${laneMatchup}</span>` : ""}
         <span class="meta">${fmt(perf.kills)}/${fmt(perf.deaths)}/${fmt(perf.assists)} · ${fmt(perf.kdaRatio)} KDA · ${fmt(perf.netWorth)} NW · ${fmt(perf.playerDamage)} dmg</span>
         <span class="reasonTags">${(perf.reasons || []).map((reason) => `<span class="reasonTag">${reason}</span>`).join("")}</span>
       </span>
       <span class="perfScore">
         <strong>${pct(perf.percentile)}</strong>
+        ${matchRank ? `<span class="rankLabel">${matchRank}</span>` : ""}
         <span class="meta">${fmt(perf.score)}</span>
       </span>
     `;
@@ -257,6 +340,8 @@ function clearSelectedPerformance(message) {
   state.selectedMatch = null;
   state.selectedPlayerSlot = null;
   el.matchDetail.classList.add("hidden");
+  el.heroData.classList.add("hidden");
+  el.itemLab.classList.add("hidden");
   el.emptyState.classList.remove("hidden");
   el.emptyState.textContent = message || "Select a performance to inspect the match, build route, combat timeline, and final stats.";
 }
@@ -265,8 +350,398 @@ async function selectPerformance(perf) {
   state.selectedPerformance = perf;
   state.selectedPlayerSlot = perf.playerSlot;
   state.selectedMatch = await getJson(`/api/matches/${perf.matchId}`);
+  el.heroData.classList.add("hidden");
+  el.itemLab.classList.add("hidden");
   renderPerformanceList();
   renderMatch();
+}
+
+function showHeroData(loadInitial = true) {
+  el.emptyState.classList.add("hidden");
+  el.matchDetail.classList.add("hidden");
+  el.itemLab.classList.add("hidden");
+  el.heroData.classList.remove("hidden");
+  if (!el.heroDataInput.value.trim() && state.selectedPerformance?.heroName) {
+    el.heroDataInput.value = state.selectedPerformance.heroName;
+  }
+  if (loadInitial) loadHeroData();
+}
+
+function showItemLab(loadInitial = true) {
+  el.emptyState.classList.add("hidden");
+  el.matchDetail.classList.add("hidden");
+  el.heroData.classList.add("hidden");
+  el.itemLab.classList.remove("hidden");
+  if (loadInitial && !el.itemResults.dataset.loaded) loadItemMatchups("recommend");
+}
+
+async function loadHeroList() {
+  const payload = await getJson("/api/heroes");
+  state.heroes = payload.items || [];
+  el.heroDataOptions.innerHTML = state.heroes.map((hero) => `
+    <option value="${escapeHtml(hero.name)}">${escapeHtml(hero.className || hero.id)}</option>
+  `).join("");
+}
+
+function heroLookupValue() {
+  const value = el.heroDataInput.value.trim();
+  if (value) return value;
+  if (state.selectedPerformance?.heroName) return state.selectedPerformance.heroName;
+  return state.heroes[0]?.name || "Silver";
+}
+
+function statGroupHtml(title, stats) {
+  if (!stats?.length) return "";
+  return `
+    <section class="heroStatGroup">
+      <h4>${escapeHtml(title)}</h4>
+      <div class="heroStatGrid">
+        ${stats.map((stat) => `
+          <div class="statBox">
+            <span>${escapeHtml(stat.label || stat.key)}</span>
+            <strong>${escapeHtml(fmt(stat.value))}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function propertyChipsHtml(properties) {
+  const chips = (properties || []).slice(0, 14).map((prop) => `
+    <span class="deltaChip">${escapeHtml(prop.label)}: ${escapeHtml(prop.value)}</span>
+  `);
+  return chips.length ? chips.join("") : `<span class="meta">No key gameplay values exposed in the cached properties.</span>`;
+}
+
+function descriptionHtml(descriptions) {
+  const values = Object.entries(descriptions || {})
+    .filter(([key, value]) => key === "desc" && value)
+    .map(([_key, value]) => value);
+  if (!values.length) return "";
+  return `<p class="heroDescription">${escapeHtml(values.join(" "))}</p>`;
+}
+
+function abilityUpgradesHtml(upgrades) {
+  const items = (upgrades || []).filter((upgrade) => upgrade?.description || upgrade?.propertyUpgrades?.length);
+  if (!items.length) return "";
+  const maxTier = Math.max(...items.map((upgrade) => Number(upgrade.tier || 0)), 0);
+  const title = maxTier ? `Upgrades ${items.length}/${maxTier}` : "Upgrades";
+  const rows = items.map((upgrade) => [
+    String(upgrade.tier || ""),
+    upgrade.description,
+    upgrade.propertyUpgrades || [],
+  ]);
+  const missing = [];
+  for (let tier = 1; tier <= maxTier; tier += 1) {
+    if (!items.some((upgrade) => Number(upgrade.tier) === tier)) missing.push(tier);
+  }
+  const missingText = missing.length ? `<span class="meta">Missing cached text for ${missing.join(", ")}</span>` : "";
+  return `
+    <div class="abilityUpgrades">
+      <div class="abilityUpgradeHeader">${title}</div>
+      ${rows.map(([tier, text, propertyUpgrades]) => `
+        <div class="abilityUpgrade">
+          <span>${tier}</span>
+          <strong>
+            ${text ? `<em>${escapeHtml(text)}</em>` : ""}
+            ${(propertyUpgrades || []).length ? `
+              <small>${propertyUpgrades.map((upgrade) => escapeHtml(upgrade)).join(" · ")}</small>
+            ` : ""}
+          </strong>
+        </div>
+      `).join("")}
+      ${missingText}
+    </div>
+  `;
+}
+
+function linkedAbilitiesHtml(abilities) {
+  const items = abilities || [];
+  if (!items.length) return "";
+  return `
+    <div class="linkedAbilities">
+      ${items.map((ability) => `
+        <article class="linkedAbility">
+          <div class="heroAbilityTitle">
+            <strong>${escapeHtml(ability.name || ability.className || "Linked ability")}</strong>
+            <span class="meta">linked</span>
+          </div>
+          ${descriptionHtml(ability.descriptions)}
+          ${abilityUpgradesHtml(ability.upgrades)}
+          <div class="combatDeltas">${propertyChipsHtml(ability.properties)}</div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function assetCardHtml(asset, indexLabel = "") {
+  return `
+    <article class="heroAbilityCard">
+      ${asset.image ? `<img src="${escapeHtml(asset.image)}" alt="">` : `<span class="heroAbilityIcon">${escapeHtml(indexLabel || "A")}</span>`}
+      <div>
+        <div class="heroAbilityTitle">
+          <strong>${escapeHtml(asset.name || asset.className || "Unknown ability")}</strong>
+          <span class="meta">${escapeHtml(asset.type || asset.className || "")}</span>
+        </div>
+        ${descriptionHtml(asset.descriptions)}
+        ${abilityUpgradesHtml(asset.upgrades)}
+        <div class="combatDeltas">${propertyChipsHtml(asset.properties)}</div>
+        ${linkedAbilitiesHtml(asset.dependentAbilities)}
+      </div>
+    </article>
+  `;
+}
+
+function costBonusesHtml(costBonuses) {
+  const entries = Object.entries(costBonuses || {});
+  if (!entries.length) return `<p class="subtle">No cost bonus table in the cached hero record.</p>`;
+  return entries.map(([name, rows]) => `
+    <section class="heroStatGroup">
+      <h4>${escapeHtml(name)}</h4>
+      <div class="costBonusGrid">
+        ${(Array.isArray(rows) ? rows : []).map((row) => `
+          <div class="costBonusBox">
+            <span>${fmt(row.gold_threshold)} souls</span>
+            <strong>${escapeHtml(fmt(row.bonus))}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function renderHeroData(hero) {
+  state.selectedHeroData = hero;
+  const baseStats = hero.baseStats || {};
+  const scalingStats = hero.scalingStats || {};
+  const hasScalingStats = Object.keys(scalingStats).length > 0;
+  const rawDetails = el.heroRawToggle.checked ? `
+    <section class="sectionBlock">
+      <div class="sectionTitle">
+        <h3>Raw Details</h3>
+        <span>Cached manifest record</span>
+      </div>
+      <pre class="rawHeroJson">${escapeHtml(JSON.stringify({ hero: hero.raw, abilities: hero.abilities, weapons: hero.weapons }, null, 2))}</pre>
+    </section>
+  ` : "";
+
+  el.heroDataSummary.textContent = `${hero.heroType || "Hero"} · complexity ${fmt(hero.complexity)} · ${hero.gunTag || hero.className}`;
+  el.heroDataContent.innerHTML = `
+    <section class="heroDataHero">
+      ${hero.card || hero.icon ? `<img src="${escapeHtml(hero.card || hero.icon)}" alt="">` : ""}
+      <div class="heroDataOverlay">
+        <p class="meta">${escapeHtml(hero.className || "")}</p>
+        <h2>${escapeHtml(hero.name || "Unknown hero")}</h2>
+        <div class="statPills">
+          <span class="pill">Type: <strong>${escapeHtml(hero.heroType || "-")}</strong></span>
+          <span class="pill">Weapon: <strong>${escapeHtml(hero.gunTag || "-")}</strong></span>
+          <span class="pill">Complexity: <strong>${escapeHtml(fmt(hero.complexity))}</strong></span>
+        </div>
+        ${descriptionHtml(hero.description)}
+      </div>
+    </section>
+    <section class="sectionBlock">
+      <div class="sectionTitle">
+        <h3>Base Stats</h3>
+        <span>Starting hero values</span>
+      </div>
+      <div class="heroStats">
+        ${["Vitality", "Weapon", "Spirit", "Mobility", "Other"].map((group) => statGroupHtml(group, baseStats[group])).join("")}
+      </div>
+    </section>
+    <section class="sectionBlock">
+      <div class="sectionTitle">
+        <h3>Abilities</h3>
+        <span>${fmt(hero.abilities?.length || 0)} signature abilities</span>
+      </div>
+      <div class="heroAbilityGrid">
+        ${(hero.abilities || []).map((ability, index) => assetCardHtml(ability, String(index + 1))).join("") || `<p class="subtle">No signature abilities found in the cached hero record.</p>`}
+      </div>
+    </section>
+    <section class="sectionBlock">
+      <div class="sectionTitle">
+        <h3>Weapons</h3>
+        <span>Primary and melee records</span>
+      </div>
+      <div class="heroAbilityGrid">
+        ${(hero.weapons || []).map((weapon) => assetCardHtml(weapon, "W")).join("") || `<p class="subtle">No weapon records found in the cached hero record.</p>`}
+      </div>
+    </section>
+    <section class="sectionBlock">
+      <div class="sectionTitle">
+        <h3>Scaling</h3>
+        <span>${hasScalingStats ? "Hero scaling stats" : "Cost bonus thresholds"}</span>
+      </div>
+      <div class="heroStats">
+        ${hasScalingStats ? Object.entries(scalingStats).map(([group, stats]) => statGroupHtml(group, stats)).join("") : costBonusesHtml(hero.costBonuses)}
+      </div>
+    </section>
+    ${rawDetails}
+  `;
+}
+
+async function loadHeroData() {
+  showHeroData(false);
+  const hero = heroLookupValue();
+  el.heroDataInput.value = hero;
+  el.heroDataSummary.textContent = "Loading...";
+  el.heroDataContent.innerHTML = `<section class="sectionBlock"><p class="subtle">Loading ${escapeHtml(hero)} from the cached asset manifest...</p></section>`;
+  try {
+    renderHeroData(await getJson(`/api/heroes/${encodeURIComponent(hero)}`));
+  } catch (error) {
+    el.heroDataSummary.textContent = "Hero not found";
+    el.heroDataContent.innerHTML = `<section class="sectionBlock"><p class="subtle">${escapeHtml(error.message)}</p></section>`;
+  }
+}
+
+function itemLabParams(mode) {
+  const params = new URLSearchParams({
+    mode,
+    hero: el.itemHeroInput.value.trim(),
+    enemies: el.itemEnemiesInput.value.trim(),
+    enemyScope: el.enemyScopeInput.value,
+    ownedItems: el.ownedItemsInput.value.trim(),
+    item: el.itemSearchInput.value.trim(),
+    minMatches: numericInputValue(el.itemMinMatchesInput) || "20",
+    limit: "40",
+  });
+  const beforeS = secondsFromMinuteValue(el.gameMinuteInput);
+  if (beforeS) params.set("beforeS", beforeS);
+  if (el.includeAbilitiesInput.checked) params.set("includeAbilities", "1");
+  return params;
+}
+
+function itemEvidenceParams(item) {
+  const params = itemLabParams("evidence");
+  params.set("itemId", String(item.itemId));
+  params.delete("item");
+  params.set("limit", "120");
+  return params;
+}
+
+function itemConfidenceText(item) {
+  return `${fmt(item.buyers)} samples · ${fmt(item.wins)} wins · ${fmt(item.wilsonLow)}-${fmt(item.wilsonHigh)}% Wilson`;
+}
+
+function renderItemResults(payload, mode) {
+  const context = payload.context || {};
+  el.itemResults.dataset.loaded = "1";
+  el.itemResultsTitle.textContent = mode === "recommend" ? "Recommendations" : "Discovery";
+  el.itemResultCount.textContent = `${fmt(payload.totalItems)} matching items`;
+  el.itemLabSummary.textContent = `${fmt(context.players)} player contexts · ${fmt(context.baselineWinRate)}% baseline · by ${context.beforeText || "-"}`;
+  if (!payload.items?.length) {
+    state.itemResultsById = new Map();
+    el.itemResults.innerHTML = `<p class="subtle">No item results match the current filters.</p>`;
+    el.itemEvidence.classList.add("hidden");
+    return;
+  }
+  state.itemResultsById = new Map(payload.items.map((item) => [String(item.itemId), item]));
+  el.itemEvidence.classList.add("hidden");
+  el.itemEvidence.innerHTML = "";
+  el.itemResults.innerHTML = payload.items.map((item) => `
+    <article class="itemResult" data-item-id="${item.itemId}">
+      <img src="${item.asset?.image || ""}" alt="">
+      <div class="itemResultMain">
+        <strong>${item.itemName}</strong>
+        <span class="meta">${itemConfidenceText(item)}</span>
+        <span class="meta">Pick ${fmt(item.pickRate)}% · avg buy ${item.avgBuyText}</span>
+      </div>
+      <div class="itemResultScore">
+        <strong>${fmt(item.winRate)}%</strong>
+        <span class="${Number(item.lift) >= 0 ? "win" : "loss"}">${Number(item.lift) >= 0 ? "+" : ""}${fmt(item.lift)}%</span>
+        <button class="evidenceButton" type="button" data-item-id="${item.itemId}">Evidence</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+async function loadItemMatchups(mode = "study") {
+  showItemLab(false);
+  el.itemResultCount.textContent = "Loading...";
+  el.itemResults.innerHTML = `<p class="subtle">Calculating from local matches...</p>`;
+  const payload = await getJson(`/api/item-matchups?${itemLabParams(mode).toString()}`);
+  renderItemResults(payload, mode);
+}
+
+function enemyEvidenceText(row) {
+  const enemies = row.enemies || [];
+  if (!enemies.length) return "-";
+  return enemies.map((enemy) => {
+    const kda = `${fmt(enemy.kills)}/${fmt(enemy.deaths)}/${fmt(enemy.assists)}`;
+    return `${enemy.heroName || "Enemy"} ${kda}`;
+  }).join(", ");
+}
+
+function renderEvidenceRows(payload, item, target = el.itemEvidence) {
+  target.classList.remove("hidden");
+  const rows = payload.items || [];
+  if (!rows.length) {
+    target.innerHTML = `<p class="subtle">No backing matches found for ${escapeHtml(item.itemName)}.</p>`;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  target.innerHTML = `
+    <div class="evidenceHeader">
+      <div>
+        <h3>Matches Behind This</h3>
+        <p class="meta">${escapeHtml(item.itemName)} · ${fmt(payload.totalMatched)} records</p>
+      </div>
+    </div>
+    <div class="evidenceTable">
+      <div class="evidenceRow evidenceHead">
+        <span>Result</span>
+        <span>Match</span>
+        <span>Buy</span>
+        <span>Duration</span>
+        <span>Player</span>
+        <span>Enemy</span>
+        <span>Rank</span>
+      </div>
+      ${rows.map((row) => `
+        <button class="evidenceRow" type="button" data-match-id="${row.matchId}" data-player-slot="${row.playerSlot}">
+          <span class="${row.won ? "win" : "loss"}">${row.won ? "Win" : "Loss"}</span>
+          <span>${row.matchId}</span>
+          <span>${row.buyTimeText}</span>
+          <span>${row.durationText}</span>
+          <span>${row.heroName || "Hero"} ${fmt(row.kills)}/${fmt(row.deaths)}/${fmt(row.assists)} · ${fmt(row.netWorth)} NW</span>
+          <span>${enemyEvidenceText(row)}</span>
+          <span>${rankText(row.averageBadge) || "-"}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  target.querySelectorAll(".evidenceRow[data-match-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const matchId = button.dataset.matchId;
+        const playerSlot = button.dataset.playerSlot;
+        state.selectedPerformance = null;
+        state.selectedPlayerSlot = playerSlot;
+        state.selectedMatch = await getJson(`/api/matches/${matchId}`);
+        el.heroData.classList.add("hidden");
+        el.itemLab.classList.add("hidden");
+        renderMatch();
+      } catch (error) {
+        target.insertAdjacentHTML("afterbegin", `<p class="subtle">${escapeHtml(error.message)}</p>`);
+      }
+    });
+  });
+}
+
+async function loadItemEvidence(item) {
+  if (!item) return;
+  el.itemEvidence.classList.remove("hidden");
+  el.itemEvidence.innerHTML = `<p class="subtle">Loading backing matches for ${item.itemName}...</p>`;
+  el.itemEvidence.scrollIntoView({ behavior: "smooth", block: "start" });
+  try {
+    const payload = await getJson(`/api/item-evidence?${itemEvidenceParams(item).toString()}`);
+    renderEvidenceRows(payload, item, el.itemEvidence);
+  } catch (error) {
+    el.itemEvidence.innerHTML = `<p class="subtle">${escapeHtml(error.message)}</p>`;
+  }
 }
 
 function selectedPlayer() {
@@ -282,13 +757,15 @@ function renderMatch() {
   state.selectedPlayerSlot = player.player_slot;
 
   el.emptyState.classList.add("hidden");
+  el.heroData.classList.add("hidden");
   el.matchDetail.classList.remove("hidden");
   el.featuredHeroCard.src = player.hero?.card || player.hero?.icon || "";
-  el.matchMeta.textContent = `Match ${match.match_id} · ${match.start_time || "unknown start"} · ${match.durationText} · ${match.game_mode || ""} ${match.match_mode || ""}`;
+  el.matchMeta.textContent = `Match ${match.match_id} · ${match.start_time || "unknown start"} · ${match.durationText} · ${match.game_mode || ""} ${match.match_mode || ""} · ${rankMeta(match.averageBadge)}`;
   el.featuredTitle.textContent = `${player.hero_name || "Unknown hero"} standout performance`;
   el.featuredStats.innerHTML = [
     ["Score", fmt(player.score)],
     ["Percentile", pct(player.percentile)],
+    ["Match rank", rankText(match.averageBadge) || "Unavailable"],
     ["K/D/A", `${fmt(player.kills)}/${fmt(player.deaths)}/${fmt(player.assists)}`],
     ["KDA ratio", fmt(player.kdaRatio)],
     ["Net worth", fmt(player.net_worth)],
@@ -299,6 +776,9 @@ function renderMatch() {
   renderSaveMatchState();
 
   renderScoreboard(payload.players);
+  renderMatchItemPlayerOptions(payload.players);
+  loadAbilitySheet();
+  loadMatchItemLab();
   renderSelectedPlayer(player);
 }
 
@@ -357,6 +837,297 @@ function renderScoreboard(players) {
 
     el.scoreboard.appendChild(column);
   }
+}
+
+function metricCellHtml(metric) {
+  const notes = metric?.notes || [];
+  const title = notes.length ? ` title="${escapeHtml(notes.join(" · "))}"` : "";
+  return `<td${title}>${escapeHtml(metric?.value || "-")}</td>`;
+}
+
+function metricSortValue(metric) {
+  const value = String(metric?.value || "");
+  const number = Number(value.match(/[-+]?\d+(?:\.\d+)?/)?.[0]);
+  return Number.isFinite(number) ? number : -Infinity;
+}
+
+function abilitySheetSortValue(row, key) {
+  if (key === "team") return row.team || "";
+  if (key === "hero") return row.heroName || "";
+  if (key === "player") return Number(row.playerSlot || 0);
+  if (key === "ability") return row.abilityName || "";
+  if (key === "rank") return Number(row.rank || 0);
+  if (["totalDamage", "cooldown", "range", "radius"].includes(key)) return metricSortValue(row[key]);
+  return "";
+}
+
+function sortAbilitySheetRows(rows) {
+  const { key, direction } = state.abilitySheetSort;
+  const multiplier = direction === "desc" ? -1 : 1;
+  return rows.slice().sort((a, b) => {
+    const valueA = abilitySheetSortValue(a, key);
+    const valueB = abilitySheetSortValue(b, key);
+    if (typeof valueA === "number" || typeof valueB === "number") {
+      return ((Number(valueA) || 0) - (Number(valueB) || 0)) * multiplier
+        || String(a.heroName || "").localeCompare(String(b.heroName || ""))
+        || String(a.abilityName || "").localeCompare(String(b.abilityName || ""));
+    }
+    return String(valueA).localeCompare(String(valueB)) * multiplier
+      || Number(a.playerSlot || 0) - Number(b.playerSlot || 0);
+  });
+}
+
+function sortHeaderHtml(key, label) {
+  const active = state.abilitySheetSort.key === key;
+  const marker = active ? (state.abilitySheetSort.direction === "asc" ? " ▲" : " ▼") : "";
+  return `<button class="sheetSortButton${active ? " active" : ""}" type="button" data-sort-key="${key}">${label}${marker}</button>`;
+}
+
+function abilityTooltipHtml(ability) {
+  if (!ability) return "";
+  return `
+    <div class="abilityTooltip">
+      <strong>${escapeHtml(ability.name || ability.className || "Ability")}</strong>
+      ${descriptionHtml(ability.descriptions)}
+      ${abilityUpgradesHtml(ability.upgrades)}
+      <div class="combatDeltas">${propertyChipsHtml(ability.properties)}</div>
+    </div>
+  `;
+}
+
+function renderAbilitySheet(payload) {
+  state.abilitySheet = payload;
+  const rows = sortAbilitySheetRows(payload.rows || []);
+  el.abilitySheetSummary.textContent = `${fmt(rows.length)} ability records · ${payload.timeText} · scaling ${payload.includeScaling ? "on" : "off"}`;
+  if (!rows.length) {
+    el.abilitySheet.innerHTML = `<p class="subtle">No ability rows found for this match.</p>`;
+    return;
+  }
+  el.abilitySheet.innerHTML = `
+    <p class="subtle">${escapeHtml(payload.note || "")}</p>
+    <div class="abilitySheetTableWrap">
+      <table class="abilitySheetTable">
+        <thead>
+          <tr>
+            <th>${sortHeaderHtml("team", "Team")}</th>
+            <th>${sortHeaderHtml("hero", "Hero")}</th>
+            <th>${sortHeaderHtml("player", "Slot")}</th>
+            <th>${sortHeaderHtml("ability", "Ability")}</th>
+            <th>${sortHeaderHtml("rank", "Rank")}</th>
+            <th>${sortHeaderHtml("totalDamage", "Total Damage")}</th>
+            <th>${sortHeaderHtml("cooldown", "Cooldown")}</th>
+            <th>${sortHeaderHtml("range", "Range")}</th>
+            <th>${sortHeaderHtml("radius", "Radius")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr class="${row.unlocked ? "" : "lockedAbility"}">
+              <td>${escapeHtml(row.team || "-")}</td>
+              <td>
+                <span class="sheetHero">
+                  <img src="${escapeHtml(row.hero?.icon || "")}" alt="">
+                  ${escapeHtml(row.heroName || "Hero")}
+                </span>
+              </td>
+              <td>${escapeHtml(row.playerSlot)}</td>
+              <td>
+                <span class="sheetAbility">
+                  ${escapeHtml(row.abilityName || "Ability")}
+                  ${abilityTooltipHtml(row.ability)}
+                </span>
+              </td>
+              <td>${row.unlocked ? `${fmt(row.rank)} · ${fmt(row.upgradeTiers)} upgrades` : "locked"}</td>
+              ${metricCellHtml(row.totalDamage)}
+              ${metricCellHtml(row.cooldown)}
+              ${metricCellHtml(row.range)}
+              ${metricCellHtml(row.radius)}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function sortAbilitySheetBy(key) {
+  if (state.abilitySheetSort.key === key) {
+    state.abilitySheetSort.direction = state.abilitySheetSort.direction === "asc" ? "desc" : "asc";
+  } else {
+    state.abilitySheetSort = {
+      key,
+      direction: ["totalDamage", "cooldown", "range", "radius", "rank"].includes(key) ? "desc" : "asc",
+    };
+  }
+  if (state.abilitySheet) renderAbilitySheet(state.abilitySheet);
+}
+
+function updateAbilitySheetCollapsed() {
+  el.abilitySheetBody.classList.toggle("hidden", state.abilitySheetCollapsed);
+  el.toggleAbilitySheetButton.textContent = state.abilitySheetCollapsed ? "Expand" : "Minimize";
+}
+
+async function loadAbilitySheet() {
+  const matchId = state.selectedMatch?.match?.match_id;
+  if (!matchId) return;
+  const params = new URLSearchParams({
+    timeS: secondsFromMinuteValue(el.abilitySheetMinuteInput) || "720",
+  });
+  if (el.abilitySheetScalingInput.checked) params.set("includeScaling", "1");
+  el.abilitySheetSummary.textContent = "Loading...";
+  el.abilitySheet.innerHTML = `<p class="subtle">Building ability sheet...</p>`;
+  try {
+    renderAbilitySheet(await getJson(`/api/matches/${matchId}/ability-sheet?${params.toString()}`));
+  } catch (error) {
+    el.abilitySheetSummary.textContent = "Unable to load ability sheet";
+    el.abilitySheet.innerHTML = `<p class="subtle">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderMatchItemPlayerOptions(players) {
+  el.matchItemPlayerInput.innerHTML = (players || [])
+    .slice()
+    .sort(comparePlayersBySlot)
+    .map((player) => `
+      <option value="${escapeHtml(player.player_slot)}">
+        ${escapeHtml(player.hero_name || "Hero")} · slot ${escapeHtml(player.player_slot)} · ${escapeHtml(player.team || "team")}
+      </option>
+    `).join("");
+  el.matchItemPlayerInput.value = String(state.selectedPlayerSlot ?? players?.[0]?.player_slot ?? "");
+}
+
+function matchItemLabParams() {
+  const params = new URLSearchParams({
+    playerSlot: el.matchItemPlayerInput.value || String(state.selectedPlayerSlot || ""),
+    timeS: secondsFromMinuteValue(el.matchItemMinuteInput) || secondsFromMinuteValue(el.abilitySheetMinuteInput) || "720",
+    minMatches: numericInputValue(el.matchItemMinMatchesInput) || "20",
+    limit: "40",
+  });
+  if (el.matchItemIncludeAbilitiesInput.checked) params.set("includeAbilities", "1");
+  return params;
+}
+
+function matchItemHeroChip(hero, fallback = "Hero") {
+  const name = hero?.heroName || hero?.name || fallback;
+  const icon = hero?.asset?.icon || hero?.hero?.icon || "";
+  return `
+    <span class="matchContextChip">
+      ${icon ? `<img src="${escapeHtml(icon)}" alt="">` : ""}
+      ${escapeHtml(name)}
+    </span>
+  `;
+}
+
+function matchItemContextGroup(title, html, emptyText = "None") {
+  return `
+    <div class="matchContextGroup">
+      <span>${escapeHtml(title)}</span>
+      <div>${html || `<span class="deltaChip">${escapeHtml(emptyText)}</span>`}</div>
+    </div>
+  `;
+}
+
+function renderMatchItemContext(payload) {
+  const matchContext = payload.matchContext || {};
+  const context = payload.context || {};
+  const ownedItems = matchContext.ownedItems || [];
+  el.matchItemContext.innerHTML = `
+    ${matchItemContextGroup("Target", matchItemHeroChip(matchContext.hero, "Target"))}
+    ${matchItemContextGroup("Allies", (matchContext.allies || []).map((hero) => matchItemHeroChip(hero, "Ally")).join(""))}
+    ${matchItemContextGroup("Enemies", (matchContext.enemies || []).map((hero) => matchItemHeroChip(hero, "Enemy")).join(""))}
+    ${matchItemContextGroup("Owned", ownedItems.map((item) => `
+      <span class="matchContextChip">
+        ${item.asset?.image ? `<img src="${escapeHtml(item.asset.image)}" alt="">` : ""}
+        ${escapeHtml(item.itemName || `Item ${item.itemId}`)}
+      </span>
+    `).join(""))}
+    ${matchItemContextGroup("Used", `
+      <span class="deltaChip">${escapeHtml(context.fallbackLevel || "Exact")}</span>
+      <span class="deltaChip">${fmt(context.players)} contexts</span>
+      <span class="deltaChip">${fmt(context.baselineWinRate)}% baseline</span>
+    `)}
+  `;
+}
+
+function renderMatchItemResults(payload) {
+  state.matchItemLab = payload;
+  state.matchItemResultsById = new Map((payload.items || []).map((item) => [String(item.itemId), item]));
+  const context = payload.context || {};
+  el.matchItemLabSummary.textContent = `${context.fallbackLevel || "Exact"} · ${fmt(context.players)} contexts · ${fmt(context.baselineWinRate)}% baseline · by ${context.beforeText || "-"}`;
+  renderMatchItemContext(payload);
+  el.matchItemEvidence.classList.add("hidden");
+  el.matchItemEvidence.innerHTML = "";
+  if (!payload.items?.length) {
+    el.matchItemResults.innerHTML = `<p class="subtle">No recommendations matched this match context.</p>`;
+    return;
+  }
+  el.matchItemResults.innerHTML = payload.items.map((item) => `
+    <article class="itemResult" data-item-id="${item.itemId}">
+      <img src="${escapeHtml(item.asset?.image || "")}" alt="">
+      <div class="itemResultMain">
+        <strong>${escapeHtml(item.itemName)}</strong>
+        <span class="meta">${itemConfidenceText(item)}</span>
+        <span class="meta">Pick ${fmt(item.pickRate)}% · avg buy ${item.avgBuyText} · ${escapeHtml(context.fallbackLevel || "Exact")}</span>
+      </div>
+      <div class="itemResultScore">
+        <strong>${fmt(item.winRate)}%</strong>
+        <span class="${Number(item.lift) >= 0 ? "win" : "loss"}">${Number(item.lift) >= 0 ? "+" : ""}${fmt(item.lift)}%</span>
+        <button class="matchEvidenceButton evidenceButton" type="button" data-item-id="${item.itemId}">Evidence</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+async function loadMatchItemLab() {
+  const matchId = state.selectedMatch?.match?.match_id;
+  if (!matchId) return;
+  if (!el.matchItemPlayerInput.value && state.selectedPlayerSlot != null) {
+    el.matchItemPlayerInput.value = String(state.selectedPlayerSlot);
+  }
+  el.matchItemLabSummary.textContent = "Loading...";
+  el.matchItemContext.innerHTML = "";
+  el.matchItemResults.innerHTML = `<p class="subtle">Calculating recommendations from this match...</p>`;
+  try {
+    renderMatchItemResults(await getJson(`/api/matches/${matchId}/item-lab?${matchItemLabParams().toString()}`));
+  } catch (error) {
+    el.matchItemLabSummary.textContent = "Unable to load Match Item Lab";
+    el.matchItemResults.innerHTML = `<p class="subtle">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function matchItemEvidenceParams(item) {
+  const context = state.matchItemLab?.context || {};
+  const params = new URLSearchParams({
+    mode: "evidence",
+    hero: context.hero || "",
+    enemies: (context.enemies || []).join(","),
+    allies: (context.allies || []).join(","),
+    ownedItems: (context.ownedItems || []).join(","),
+    enemyScope: context.enemyScope || "team",
+    itemId: String(item.itemId),
+    limit: "120",
+  });
+  if (context.beforeS != null) params.set("beforeS", String(context.beforeS));
+  if (el.matchItemIncludeAbilitiesInput.checked) params.set("includeAbilities", "1");
+  return params;
+}
+
+async function loadMatchItemEvidence(item) {
+  if (!item) return;
+  el.matchItemEvidence.classList.remove("hidden");
+  el.matchItemEvidence.innerHTML = `<p class="subtle">Loading backing matches for ${escapeHtml(item.itemName)}...</p>`;
+  el.matchItemEvidence.scrollIntoView({ behavior: "smooth", block: "start" });
+  try {
+    const payload = await getJson(`/api/item-evidence?${matchItemEvidenceParams(item).toString()}`);
+    renderEvidenceRows(payload, item, el.matchItemEvidence);
+  } catch (error) {
+    el.matchItemEvidence.innerHTML = `<p class="subtle">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function updateMatchItemLabCollapsed() {
+  el.matchItemLabBody.classList.toggle("hidden", state.matchItemLabCollapsed);
+  el.toggleMatchItemLabButton.textContent = state.matchItemLabCollapsed ? "Expand" : "Minimize";
 }
 
 function laneLabel(player) {
@@ -545,8 +1316,8 @@ function playerBySlot(slot) {
   return state.selectedMatch.players.find((player) => Number(player.player_slot) === Number(slot)) || null;
 }
 
-function fullTimelineChip(label) {
-  return `<span class="deltaChip">${label}</span>`;
+function fullTimelineChip(label, className = "") {
+  return `<span class="deltaChip ${className}">${label}</span>`;
 }
 
 function itemTimelineEvents(items) {
@@ -568,7 +1339,7 @@ function itemTimelineEvents(items) {
         fullTimelineChip(item.asset?.slot || item.asset?.type || "shop item"),
         costLabel ? fullTimelineChip(costLabel) : "",
         imbue ? fullTimelineChip(imbue) : "",
-        item.sold_time_s && !hasSeparateSellEvent ? fullTimelineChip(`sold ${mmss(item.sold_time_s)}`) : "",
+        item.sold_time_s && !hasSeparateSellEvent ? fullTimelineChip(`sold ${mmss(item.sold_time_s)}`, "soldChip") : "",
       ].filter(Boolean).join(""),
     }];
     if (hasSeparateSellEvent) {
@@ -794,11 +1565,12 @@ function timelineRows(events) {
 function groupedMainTimelineCards(events) {
   const groups = [];
   for (const event of events) {
-    const group = groups.find((existing) => existing.time === event.time);
+    const group = groups.find((existing) => shouldGroupTimelineEvents(existing, event));
     if (group) {
       group.events.push(event);
+      group.endTime = Math.max(group.endTime, Number(event.time || 0));
     } else {
-      groups.push({ time: event.time, events: [event] });
+      groups.push({ time: event.time, endTime: Number(event.time || 0), events: [event] });
     }
   }
 
@@ -807,6 +1579,13 @@ function groupedMainTimelineCards(events) {
       ${group.events.map(timelineEventCard).join("")}
     </div>
   `).join("");
+}
+
+function shouldGroupTimelineEvents(group, event) {
+  const eventTime = Number(event.time || 0);
+  if (group.time === event.time) return true;
+  const isNearbyItemEvent = event.type === "item" && group.events.every((item) => item.type === "item");
+  return isNearbyItemEvent && Math.abs(eventTime - group.endTime) <= GROUP_NEARBY_ITEM_EVENT_SECONDS;
 }
 
 function renderFullTimeline(player, shopItems, abilityItems) {
@@ -997,10 +1776,62 @@ el.scoreboardSortInput.addEventListener("change", () => {
   saveFilters();
   if (state.selectedMatch?.players) renderScoreboard(state.selectedMatch.players);
 });
+el.loadAbilitySheetButton.addEventListener("click", loadAbilitySheet);
+el.abilitySheetMinuteInput.addEventListener("change", loadAbilitySheet);
+el.abilitySheetScalingInput.addEventListener("change", loadAbilitySheet);
+el.toggleAbilitySheetButton.addEventListener("click", () => {
+  state.abilitySheetCollapsed = !state.abilitySheetCollapsed;
+  updateAbilitySheetCollapsed();
+});
+el.abilitySheet.addEventListener("click", (event) => {
+  const button = event.target.closest(".sheetSortButton");
+  if (!button) return;
+  sortAbilitySheetBy(button.dataset.sortKey);
+});
+el.loadMatchItemLabButton.addEventListener("click", loadMatchItemLab);
+el.matchItemPlayerInput.addEventListener("change", loadMatchItemLab);
+el.matchItemMinuteInput.addEventListener("change", loadMatchItemLab);
+el.matchItemMinMatchesInput.addEventListener("change", loadMatchItemLab);
+el.matchItemIncludeAbilitiesInput.addEventListener("change", loadMatchItemLab);
+el.toggleMatchItemLabButton.addEventListener("click", () => {
+  state.matchItemLabCollapsed = !state.matchItemLabCollapsed;
+  updateMatchItemLabCollapsed();
+});
+el.matchItemResults.addEventListener("click", (event) => {
+  const button = event.target.closest(".matchEvidenceButton");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  loadMatchItemEvidence(state.matchItemResultsById.get(button.dataset.itemId));
+});
 el.refreshButton.addEventListener("click", loadPerformances);
 el.saveMatchButton.addEventListener("click", saveSelectedMatch);
+el.heroDataButton.addEventListener("click", showHeroData);
+el.loadHeroDataButton.addEventListener("click", loadHeroData);
+el.heroDataInput.addEventListener("change", loadHeroData);
+el.heroDataInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadHeroData();
+});
+el.heroRawToggle.addEventListener("change", () => {
+  if (state.selectedHeroData) renderHeroData(state.selectedHeroData);
+});
+el.itemLabButton.addEventListener("click", showItemLab);
+el.itemResults.addEventListener("click", (event) => {
+  const button = event.target.closest(".evidenceButton");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  loadItemEvidence(state.itemResultsById.get(button.dataset.itemId));
+});
+el.discoverItemsButton.addEventListener("click", () => loadItemMatchups("study"));
+el.recommendItemsButton.addEventListener("click", () => loadItemMatchups("recommend"));
 
 loadSavedFilters();
+
+loadHeroList()
+  .catch((_error) => {
+    state.heroes = [];
+  });
 
 loadSummary()
   .then(loadPerformances)

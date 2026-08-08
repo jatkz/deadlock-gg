@@ -231,6 +231,42 @@ data/deadlock-analysis/deadlock_matches.sqlite
 
 The first schema includes `matches`, `players`, `player_items`, and `player_stat_samples`.
 
+## Demo Query Spike
+
+Replay/demo extraction is intentionally separate from the normal collector. The spike uses the Deadlock API demo-query endpoints, which download, decompress, parse, and query a match demo server-side. Results are saved locally under:
+
+```text
+data/deadlock-demo-query
+```
+
+Inspect and cache the queryable demo schema for a match:
+
+```sh
+./deadlock_demo_query schema --match-id 92525538
+```
+
+Print the default item-usage probe SQL without submitting a rate-limited job:
+
+```sh
+./deadlock_demo_query run --match-id 92525538 --print-query
+```
+
+Submit the default NDJSON query, poll until the async job finishes, download the artifact, and ingest rows into `demo_item_usage_events` in the local analysis DB:
+
+```sh
+./deadlock_demo_query run --match-id 92525538
+```
+
+Useful safeguards:
+
+```sh
+./deadlock_demo_query run --match-id 92525538 --no-submit
+./deadlock_demo_query run --match-id 92525538 --no-ingest
+./deadlock_demo_query run --match-id 92525538 --query-file custom.sql
+```
+
+The initial probe reads `ImportantAbilityUsedEvent` and `ItemPurchaseNotificationEvent`. Timestamps are provisional: raw `tick` is always stored, while `game_time_s` is only populated when the query returns it. Demo-query API limits are much lower than metadata limits, so run this only for saved or explicitly selected matches.
+
 ## Raspberry Pi Deployment
 
 Create the archive on your main machine:

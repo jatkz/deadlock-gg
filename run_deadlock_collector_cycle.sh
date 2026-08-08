@@ -5,11 +5,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
+  declare -A DEADLOCK_ENV_OVERRIDES=()
+  while IFS= read -r ENV_NAME; do
+    if [[ "$ENV_NAME" == DEADLOCK_* ]]; then
+      DEADLOCK_ENV_OVERRIDES["$ENV_NAME"]="${!ENV_NAME}"
+    fi
+  done < <(compgen -e)
+
   set -a
   # Strip Windows CRLF line endings while sourcing, without rewriting secrets.
   # shellcheck disable=SC1090
   source <(sed 's/\r$//' "$SCRIPT_DIR/.env")
   set +a
+
+  for ENV_NAME in "${!DEADLOCK_ENV_OVERRIDES[@]}"; do
+    export "$ENV_NAME=${DEADLOCK_ENV_OVERRIDES[$ENV_NAME]}"
+  done
+  unset DEADLOCK_ENV_OVERRIDES
 fi
 
 if [[ -x "$SCRIPT_DIR/venv/bin/python" ]]; then

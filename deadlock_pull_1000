@@ -4,17 +4,52 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+DEFAULT_MAX_MATCHES=1000
 FRESH=0
-if [[ "${1:-}" == "--fresh" ]]; then
-  FRESH=1
-  shift
-fi
+MAX_MATCHES="$DEFAULT_MAX_MATCHES"
+REQUEST_LIMIT=100
 
-if [[ "${1:-}" != "" ]]; then
-  echo "Usage: $0 [--fresh]" >&2
-  echo "Pulls up to 1000 top-quartile matches, then stops the background collector." >&2
+usage() {
+  cat <<EOF >&2
+Usage: $0 [--fresh] [--max-matches N]
+Pulls up to N top-quartile matches (default ${DEFAULT_MAX_MATCHES}).
+Options:
+  --fresh           remove existing data before pulling
+  --max-matches N   maximum matches to save this run (positive integer)
+EOF
+}
+
+while [[ ${#} -gt 0 ]]; do
+  case "${1:-}" in
+    --fresh)
+      FRESH=1
+      shift
+      ;;
+    --max-matches)
+      MAX_MATCHES="${2:-}"
+      shift 2
+      ;;
+    --max-matches=*)
+      MAX_MATCHES="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if ! [[ "$MAX_MATCHES" =~ ^[0-9]+$ ]] || [[ "$MAX_MATCHES" -le 0 ]]; then
+  echo "--max-matches must be a positive integer" >&2
   exit 2
 fi
+
+PYTHON_BIN="$SCRIPT_DIR/venv/bin/python"
 
 if [[ ! -f .env && -f .env.example ]]; then
   cp .env.example .env
@@ -29,8 +64,6 @@ if [[ ! -x venv/bin/python ]]; then
     exit 1
   fi
 fi
-
-PYTHON_BIN="$SCRIPT_DIR/venv/bin/python"
 
 chmod +x \
   run_deadlock_collector_cycle.sh \
@@ -47,16 +80,19 @@ if [[ ! -f assets/deadlock/manifest.json ]]; then
   "$PYTHON_BIN" scripts/build_deadlock_asset_manifest.py --pretty
 fi
 
-echo "Starting one-shot Deadlock pull: scan_mode=backfill request_limit=100 max_requests=20 max_matches=1000 min_badge=${DEADLOCK_MIN_AVERAGE_BADGE:-84} min_duration_s=${DEADLOCK_MIN_DURATION_SECONDS:-720}"
+# Compute number of requests needed for the desired max matches
+MAX_REQUESTS=$(( (MAX_MATCHES + REQUEST_LIMIT - 1) / REQUEST_LIMIT ))
+
+echo "Starting one-shot Deadlock pull: scan_mode=backfill request_limit=${REQUEST_LIMIT} max_requests=${MAX_REQUESTS} max_matches=${MAX_MATCHES} min_badge=${DEADLOCK_MIN_AVERAGE_BADGE:-84} min_duration_s=${DEADLOCK_MIN_DURATION_SECONDS:-720}"
 
 set +e
 DEADLOCK_SCAN_MODE=backfill \
 DEADLOCK_MIN_AVERAGE_BADGE="${DEADLOCK_MIN_AVERAGE_BADGE:-84}" \
 DEADLOCK_MIN_DURATION_SECONDS="${DEADLOCK_MIN_DURATION_SECONDS:-720}" \
-DEADLOCK_MAX_REQUESTS_PER_RUN=20 \
-DEADLOCK_REQUEST_LIMIT=100 \
-DEADLOCK_MAX_MATCHES_PER_RUN=1000 \
-DEADLOCK_MAX_MATCHES_TOTAL=1000 \
+DEADLOCK_MAX_REQUESTS_PER_RUN=${MAX_REQUESTS} \
+DEADLOCK_REQUEST_LIMIT=${REQUEST_LIMIT} \
+DEADLOCK_MAX_MATCHES_PER_RUN=${MAX_MATCHES} \
+DEADLOCK_MAX_MATCHES_TOTAL=${MAX_MATCHES} \
 DEADLOCK_REQUEST_TIMEOUT_SECONDS="${DEADLOCK_REQUEST_TIMEOUT_SECONDS:-90}" \
 "$PYTHON_BIN" scripts/deadlock_match_collector.py
 STATUS=$?
@@ -69,7 +105,7 @@ fi
 "$PYTHON_BIN" scripts/build_deadlock_sqlite_db.py
 
 echo
-echo "Pulled up to 1000 top-quartile Deadlock matches."
+echo "Pulled up to ${MAX_MATCHES} top-quartile Deadlock matches."
 echo "Raw data: data/deadlock-ranked"
 echo "Saved matches: data/deadlock-saved"
 echo "SQLite:   data/deadlock-analysis/deadlock_matches.sqlite"

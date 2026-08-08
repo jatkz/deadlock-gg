@@ -55,6 +55,20 @@ Show standout performance distribution by hero:
 ./deadlock_standout_by_hero
 ```
 
+Show item win rates for hero/enemy contexts:
+
+```sh
+./deadlock_item_matchups --hero Wraith --enemy Dynamo --enemy-scope lane --before-minutes 12 --min-matches 5
+```
+
+Run the replay/demo query spike for a specific match:
+
+```sh
+./deadlock_demo_query schema --match-id 92525538
+./deadlock_demo_query run --match-id 92525538 --print-query
+./deadlock_demo_query run --match-id 92525538
+```
+
 Manual one-shot flow:
 
 ```sh
