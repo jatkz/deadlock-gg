@@ -595,6 +595,219 @@ h3 {
   font-size: 13px;
 }
 
+.heroCompareControls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) auto auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.heroCompareControls label {
+  display: grid;
+  gap: 7px;
+  color: #d8d6c5;
+  font-size: 13px;
+}
+
+.heroCompareControls input,
+.heroCompareControls select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #0f120d;
+  color: var(--text);
+  border-radius: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.heroCompareColumnPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.heroCompareColumnOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 0 9px;
+  color: #d8d6c5;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.heroCompareColumnOption:has(input:checked) {
+  border-color: rgba(112, 198, 170, 0.42);
+  background: rgba(112, 198, 170, 0.1);
+  color: #bde9dc;
+}
+
+.heroCompareColumnOption input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-2);
+}
+
+.heroComparePicker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.heroCompareOption {
+  display: grid;
+  grid-template-columns: auto 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.heroCompareOption:has(input:checked) {
+  border-color: var(--accent);
+  background: #24271d;
+}
+
+.heroCompareOption input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.heroCompareOption img {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #2e3328;
+}
+
+.heroCompareOption strong,
+.heroCompareHero strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heroCompareOption small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.heroCompareContent {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.heroCompareStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.heroCompareHero {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.heroCompareHero img {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #2e3328;
+}
+
+.heroCompareTableWrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f120d;
+}
+
+.heroCompareTable {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.heroCompareTable th,
+.heroCompareTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.heroCompareTable th {
+  color: var(--muted);
+  background: #151812;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.heroCompareTable tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.heroCompareStatSort {
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.heroCompareStatSort span {
+  margin-left: 6px;
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.heroCompareStatSort:hover {
+  color: #f5f1d2;
+}
+
+.heroCompareTable td strong {
+  display: block;
+  color: #f5f1d2;
+}
+
+.heroCompareTable td span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .heroDataHero {
   position: relative;
   min-height: 280px;
@@ -1306,6 +1519,9 @@ button.evidenceRow:hover {
   .scoreboard,
   .playerPanels,
   .heroDataControls,
+  .heroCompareControls,
+  .heroComparePicker,
+  .heroCompareStrip,
   .heroAbilityGrid,
   .itemLabControls {
     grid-template-columns: 1fr;

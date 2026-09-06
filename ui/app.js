@@ -1,6 +1,10 @@
 const state = {
   performances: [],
   heroes: [],
+  heroComparison: null,
+  selectedHeroComparisonIds: new Set(),
+  selectedHeroComparisonColumns: new Set(),
+  heroComparisonSort: { key: "dps", direction: "desc" },
   itemResultsById: new Map(),
   matchItemResultsById: new Map(),
   selectedPerformance: null,
@@ -29,6 +33,7 @@ const el = {
   enemyLaneHeroInput: document.querySelector("#enemyLaneHeroInput"),
   savedOnlyInput: document.querySelector("#savedOnlyInput"),
   heroDataButton: document.querySelector("#heroDataButton"),
+  heroCompareButton: document.querySelector("#heroCompareButton"),
   itemLabButton: document.querySelector("#itemLabButton"),
   refreshButton: document.querySelector("#refreshButton"),
   performanceList: document.querySelector("#performanceList"),
@@ -41,6 +46,16 @@ const el = {
   loadHeroDataButton: document.querySelector("#loadHeroDataButton"),
   heroRawToggle: document.querySelector("#heroRawToggle"),
   heroDataContent: document.querySelector("#heroDataContent"),
+  heroCompare: document.querySelector("#heroCompare"),
+  heroCompareSummary: document.querySelector("#heroCompareSummary"),
+  heroCompareSearchInput: document.querySelector("#heroCompareSearchInput"),
+  heroCompareSortInput: document.querySelector("#heroCompareSortInput"),
+  heroCompareSortDirectionButton: document.querySelector("#heroCompareSortDirectionButton"),
+  clearHeroCompareButton: document.querySelector("#clearHeroCompareButton"),
+  heroComparePicker: document.querySelector("#heroComparePicker"),
+  heroCompareColumnPicker: document.querySelector("#heroCompareColumnPicker"),
+  heroCompareCount: document.querySelector("#heroCompareCount"),
+  heroCompareContent: document.querySelector("#heroCompareContent"),
   itemLab: document.querySelector("#itemLab"),
   itemLabSummary: document.querySelector("#itemLabSummary"),
   itemHeroInput: document.querySelector("#itemHeroInput"),
@@ -103,10 +118,34 @@ const metricLabels = {
 };
 
 const FILTER_STORAGE_KEY = "deadlockMatchUiFilters";
+const HERO_COMPARE_STORAGE_KEY = "deadlockHeroCompareSettings";
 const TIMELINE_EVENT_TYPES = ["item", "ability", "kill", "death", "assist", "neutral"];
 const SEPARATE_SELL_EVENT_SECONDS = 60;
 const GROUP_NEARBY_ITEM_EVENT_SECONDS = 1;
 const SUMMARY_WINDOW_SECONDS = 180;
+const HERO_COMPARE_LIMIT = 6;
+const HERO_COMPARE_COLUMNS = [
+  "dps",
+  "sustained_dps",
+  "bullet_damage",
+  "bullets_per_sec",
+  "ammo",
+  "reload_time_s",
+  "max_health",
+  "health_regen",
+  "bullet_resist",
+  "spirit_resist",
+  "move_speed_m_s",
+  "sprint_speed_m",
+  "stamina",
+  "dash_speed_m",
+  "spirit_power",
+];
+
+function defaultHeroCompareColumns(columns = []) {
+  const available = new Set(columns);
+  return HERO_COMPARE_COLUMNS.filter((column) => available.has(column));
+}
 
 function fmt(value) {
   if (value === null || value === undefined || value === "") return "-";
@@ -241,6 +280,42 @@ function saveFiltersAndLoadPerformances() {
   return loadPerformances();
 }
 
+function loadHeroCompareSettings() {
+  try {
+    const settings = JSON.parse(localStorage.getItem(HERO_COMPARE_STORAGE_KEY));
+    if (!settings || typeof settings !== "object") return;
+    if (Array.isArray(settings.heroIds)) {
+      state.selectedHeroComparisonIds = new Set(settings.heroIds.map(String));
+    }
+    if (Array.isArray(settings.columns)) {
+      state.selectedHeroComparisonColumns = new Set(settings.columns.map(String));
+    }
+    if (settings.sort && typeof settings.sort === "object") {
+      const key = String(settings.sort.key || "");
+      const direction = settings.sort.direction === "asc" ? "asc" : "desc";
+      if (key) state.heroComparisonSort = { key, direction };
+    }
+  } catch (_error) {
+    try {
+      localStorage.removeItem(HERO_COMPARE_STORAGE_KEY);
+    } catch (_ignored) {
+      // Ignore storage failures; compare settings still work for the current page.
+    }
+  }
+}
+
+function saveHeroCompareSettings() {
+  try {
+    localStorage.setItem(HERO_COMPARE_STORAGE_KEY, JSON.stringify({
+      heroIds: Array.from(state.selectedHeroComparisonIds),
+      columns: Array.from(state.selectedHeroComparisonColumns),
+      sort: state.heroComparisonSort,
+    }));
+  } catch (_error) {
+    // Ignore storage failures; compare settings still work for the current page.
+  }
+}
+
 async function getJson(url) {
   const response = await fetch(url);
   const payload = await response.json();
@@ -341,6 +416,7 @@ function clearSelectedPerformance(message) {
   state.selectedPlayerSlot = null;
   el.matchDetail.classList.add("hidden");
   el.heroData.classList.add("hidden");
+  el.heroCompare.classList.add("hidden");
   el.itemLab.classList.add("hidden");
   el.emptyState.classList.remove("hidden");
   el.emptyState.textContent = message || "Select a performance to inspect the match, build route, combat timeline, and final stats.";
@@ -351,6 +427,7 @@ async function selectPerformance(perf) {
   state.selectedPlayerSlot = perf.playerSlot;
   state.selectedMatch = await getJson(`/api/matches/${perf.matchId}`);
   el.heroData.classList.add("hidden");
+  el.heroCompare.classList.add("hidden");
   el.itemLab.classList.add("hidden");
   renderPerformanceList();
   renderMatch();
@@ -359,6 +436,7 @@ async function selectPerformance(perf) {
 function showHeroData(loadInitial = true) {
   el.emptyState.classList.add("hidden");
   el.matchDetail.classList.add("hidden");
+  el.heroCompare.classList.add("hidden");
   el.itemLab.classList.add("hidden");
   el.heroData.classList.remove("hidden");
   if (!el.heroDataInput.value.trim() && state.selectedPerformance?.heroName) {
@@ -367,10 +445,20 @@ function showHeroData(loadInitial = true) {
   if (loadInitial) loadHeroData();
 }
 
+function showHeroCompare(loadInitial = true) {
+  el.emptyState.classList.add("hidden");
+  el.matchDetail.classList.add("hidden");
+  el.heroData.classList.add("hidden");
+  el.itemLab.classList.add("hidden");
+  el.heroCompare.classList.remove("hidden");
+  if (loadInitial) loadHeroComparison();
+}
+
 function showItemLab(loadInitial = true) {
   el.emptyState.classList.add("hidden");
   el.matchDetail.classList.add("hidden");
   el.heroData.classList.add("hidden");
+  el.heroCompare.classList.add("hidden");
   el.itemLab.classList.remove("hidden");
   if (loadInitial && !el.itemResults.dataset.loaded) loadItemMatchups("recommend");
 }
@@ -381,6 +469,219 @@ async function loadHeroList() {
   el.heroDataOptions.innerHTML = state.heroes.map((hero) => `
     <option value="${escapeHtml(hero.name)}">${escapeHtml(hero.className || hero.id)}</option>
   `).join("");
+}
+
+function columnLabel(column) {
+  return String(column || "")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.length <= 3 ? part.toUpperCase() : part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function heroCompareId(row) {
+  return String(row?.row_index || row?.hero?.id || row?.values?.hero || "");
+}
+
+function heroCompareName(row) {
+  return row?.values?.hero || row?.raw?.hero || row?.hero?.name || "Unknown";
+}
+
+function heroCompareRows() {
+  return state.heroComparison?.items || [];
+}
+
+function selectedHeroCompareRows() {
+  const rows = heroCompareRows().filter((row) => state.selectedHeroComparisonIds.has(heroCompareId(row)));
+  return rows.sort((a, b) => compareHeroRows(a, b, state.heroComparisonSort.key, state.heroComparisonSort.direction));
+}
+
+function ensureHeroCompareSelection(rows) {
+  if (state.selectedHeroComparisonIds.size || !rows.length) return;
+  const names = [state.selectedPerformance?.heroName, "Abrams", "Haze", "Seven", "Wraith"].filter(Boolean);
+  for (const name of names) {
+    const row = rows.find((item) => searchTokenMatches(heroCompareName(item), name));
+    if (row) state.selectedHeroComparisonIds.add(heroCompareId(row));
+    if (state.selectedHeroComparisonIds.size >= 4) break;
+  }
+  if (!state.selectedHeroComparisonIds.size) {
+    for (const row of rows.slice(0, 4)) state.selectedHeroComparisonIds.add(heroCompareId(row));
+  }
+  saveHeroCompareSettings();
+}
+
+function ensureHeroCompareColumns(columns = []) {
+  const available = new Set(columns);
+  state.selectedHeroComparisonColumns = new Set(
+    Array.from(state.selectedHeroComparisonColumns).filter((column) => available.has(column))
+  );
+  if (!state.selectedHeroComparisonColumns.size) {
+    state.selectedHeroComparisonColumns = new Set(defaultHeroCompareColumns(columns));
+    saveHeroCompareSettings();
+  }
+  if (!available.has(state.heroComparisonSort.key)) {
+    state.heroComparisonSort.key = state.selectedHeroComparisonColumns.values().next().value || columns[0] || "hero";
+    saveHeroCompareSettings();
+  }
+}
+
+function sortableValue(row, column) {
+  const value = row?.values?.[column];
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : String(value).toLowerCase();
+}
+
+function compareHeroRows(a, b, column, direction) {
+  const left = sortableValue(a, column);
+  const right = sortableValue(b, column);
+  const multiplier = direction === "asc" ? 1 : -1;
+  if (left === null && right === null) return heroCompareName(a).localeCompare(heroCompareName(b));
+  if (left === null) return 1;
+  if (right === null) return -1;
+  if (typeof left === "number" && typeof right === "number" && left !== right) {
+    return (left - right) * multiplier;
+  }
+  const compared = String(left).localeCompare(String(right), undefined, { numeric: true });
+  return compared ? compared * multiplier : heroCompareName(a).localeCompare(heroCompareName(b));
+}
+
+function searchTokenMatches(value, query) {
+  const cleanValue = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const cleanQuery = String(query || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return cleanQuery ? cleanValue.includes(cleanQuery) : true;
+}
+
+function renderHeroComparePicker() {
+  const rows = heroCompareRows();
+  const query = el.heroCompareSearchInput.value.trim();
+  const filtered = rows
+    .filter((row) => searchTokenMatches(heroCompareName(row), query))
+    .slice(0, 24);
+  if (!filtered.length) {
+    el.heroComparePicker.innerHTML = `<p class="subtle">No heroes match that search.</p>`;
+    return;
+  }
+  el.heroComparePicker.innerHTML = filtered.map((row) => {
+    const id = heroCompareId(row);
+    const checked = state.selectedHeroComparisonIds.has(id) ? " checked" : "";
+    return `
+      <label class="heroCompareOption">
+        <input type="checkbox" value="${escapeHtml(id)}"${checked}>
+        <img src="${escapeHtml(row.hero?.icon || "")}" alt="">
+        <span>
+          <strong>${escapeHtml(heroCompareName(row))}</strong>
+          <small>${escapeHtml(fmt(row.values?.dps))} DPS · ${escapeHtml(fmt(row.values?.max_health))} HP</small>
+        </span>
+      </label>
+    `;
+  }).join("");
+}
+
+function renderHeroCompareControls() {
+  const columns = state.heroComparison?.columns || [];
+  ensureHeroCompareColumns(columns);
+  const selectedColumns = Array.from(state.selectedHeroComparisonColumns);
+  el.heroCompareSortInput.innerHTML = selectedColumns.map((column) => `
+    <option value="${escapeHtml(column)}"${column === state.heroComparisonSort.key ? " selected" : ""}>${escapeHtml(columnLabel(column))}</option>
+  `).join("");
+  el.heroCompareSortDirectionButton.textContent = state.heroComparisonSort.direction === "asc" ? "Asc" : "Desc";
+  el.heroCompareSortDirectionButton.title = state.heroComparisonSort.direction === "asc" ? "Sort low to high" : "Sort high to low";
+  el.heroCompareColumnPicker.innerHTML = columns
+    .filter((column) => column !== "hero")
+    .map((column) => {
+      const checked = state.selectedHeroComparisonColumns.has(column) ? " checked" : "";
+      return `
+        <label class="heroCompareColumnOption">
+          <input type="checkbox" value="${escapeHtml(column)}"${checked}>
+          <span>${escapeHtml(columnLabel(column))}</span>
+        </label>
+      `;
+    }).join("");
+}
+
+function renderHeroCompareContent() {
+  const rows = selectedHeroCompareRows();
+  const availableColumns = Array.from(state.selectedHeroComparisonColumns)
+    .filter((column) => state.heroComparison?.columns?.includes(column));
+  el.heroCompareCount.textContent = `${fmt(rows.length)} heroes · ${fmt(availableColumns.length)} stats`;
+  if (!rows.length) {
+    el.heroCompareContent.innerHTML = `<p class="subtle">Select heroes to compare their wiki table stats.</p>`;
+    return;
+  }
+  if (!availableColumns.length) {
+    el.heroCompareContent.innerHTML = `<p class="subtle">Select at least one stat to show.</p>`;
+    return;
+  }
+  el.heroCompareContent.innerHTML = `
+    <div class="heroCompareStrip">
+      ${rows.map((row) => `
+        <article class="heroCompareHero">
+          <img src="${escapeHtml(row.hero?.icon || "")}" alt="">
+          <div>
+            <strong>${escapeHtml(heroCompareName(row))}</strong>
+            <span class="meta">${escapeHtml(fmt(row.values?.dps))} DPS · ${escapeHtml(fmt(row.values?.max_health))} HP · ${escapeHtml(fmt(row.values?.move_speed_m_s))} m/s</span>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+    <div class="heroCompareTableWrap">
+      <table class="heroCompareTable">
+        <thead>
+          <tr>
+            <th>Stat</th>
+            ${rows.map((row) => `<th>${escapeHtml(heroCompareName(row))}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${availableColumns.map((column) => `
+            <tr>
+              <th>
+                <button class="heroCompareStatSort" type="button" data-column="${escapeHtml(column)}">
+                  ${escapeHtml(columnLabel(column))}
+                  ${state.heroComparisonSort.key === column ? `<span>${state.heroComparisonSort.direction === "asc" ? "Asc" : "Desc"}</span>` : ""}
+                </button>
+              </th>
+              ${rows.map((row) => `
+                <td>
+                  <strong>${escapeHtml(fmt(row.values?.[column]))}</strong>
+                  ${row.raw?.[column] && String(row.raw[column]) !== String(row.values?.[column] ?? "") ? `<span>${escapeHtml(row.raw[column])}</span>` : ""}
+                </td>
+              `).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderHeroComparison() {
+  const payload = state.heroComparison;
+  const rows = heroCompareRows();
+  ensureHeroCompareSelection(rows);
+  el.heroCompareSummary.textContent = `${fmt(payload?.counts?.heroes || rows.length)} rows · ${fmt(payload?.counts?.columns || payload?.columns?.length || 0)} columns`;
+  renderHeroCompareControls();
+  renderHeroComparePicker();
+  renderHeroCompareContent();
+}
+
+async function loadHeroComparison() {
+  showHeroCompare(false);
+  if (state.heroComparison) {
+    renderHeroComparison();
+    return;
+  }
+  el.heroCompareSummary.textContent = "Loading...";
+  el.heroComparePicker.innerHTML = `<p class="subtle">Loading wiki comparison table...</p>`;
+  el.heroCompareContent.innerHTML = "";
+  try {
+    state.heroComparison = await getJson("/api/hero-comparison");
+    renderHeroComparison();
+  } catch (error) {
+    el.heroCompareSummary.textContent = "Table unavailable";
+    el.heroComparePicker.innerHTML = `<p class="subtle">${escapeHtml(error.message)}</p>`;
+  }
 }
 
 function heroLookupValue() {
@@ -1807,6 +2108,7 @@ el.matchItemResults.addEventListener("click", (event) => {
 el.refreshButton.addEventListener("click", loadPerformances);
 el.saveMatchButton.addEventListener("click", saveSelectedMatch);
 el.heroDataButton.addEventListener("click", showHeroData);
+el.heroCompareButton.addEventListener("click", showHeroCompare);
 el.loadHeroDataButton.addEventListener("click", loadHeroData);
 el.heroDataInput.addEventListener("change", loadHeroData);
 el.heroDataInput.addEventListener("keydown", (event) => {
@@ -1814,6 +2116,69 @@ el.heroDataInput.addEventListener("keydown", (event) => {
 });
 el.heroRawToggle.addEventListener("change", () => {
   if (state.selectedHeroData) renderHeroData(state.selectedHeroData);
+});
+el.heroCompareSearchInput.addEventListener("input", debounce(renderHeroComparePicker, 120));
+el.heroCompareSortInput.addEventListener("change", () => {
+  state.heroComparisonSort.key = el.heroCompareSortInput.value;
+  saveHeroCompareSettings();
+  renderHeroCompareContent();
+});
+el.heroCompareSortDirectionButton.addEventListener("click", () => {
+  state.heroComparisonSort.direction = state.heroComparisonSort.direction === "asc" ? "desc" : "asc";
+  saveHeroCompareSettings();
+  renderHeroCompareControls();
+  renderHeroCompareContent();
+});
+el.heroComparePicker.addEventListener("change", (event) => {
+  const input = event.target.closest("input[type='checkbox']");
+  if (!input) return;
+  if (input.checked && state.selectedHeroComparisonIds.size >= HERO_COMPARE_LIMIT) {
+    input.checked = false;
+    return;
+  }
+  if (input.checked) {
+    state.selectedHeroComparisonIds.add(input.value);
+  } else {
+    state.selectedHeroComparisonIds.delete(input.value);
+  }
+  saveHeroCompareSettings();
+  renderHeroComparePicker();
+  renderHeroCompareContent();
+});
+el.heroCompareColumnPicker.addEventListener("change", (event) => {
+  const input = event.target.closest("input[type='checkbox']");
+  if (!input) return;
+  if (input.checked) {
+    state.selectedHeroComparisonColumns.add(input.value);
+  } else {
+    state.selectedHeroComparisonColumns.delete(input.value);
+  }
+  if (!state.selectedHeroComparisonColumns.has(state.heroComparisonSort.key)) {
+    state.heroComparisonSort.key = state.selectedHeroComparisonColumns.values().next().value || "hero";
+  }
+  saveHeroCompareSettings();
+  renderHeroCompareControls();
+  renderHeroCompareContent();
+});
+el.heroCompareContent.addEventListener("click", (event) => {
+  const button = event.target.closest(".heroCompareStatSort");
+  if (!button) return;
+  const column = button.dataset.column;
+  if (state.heroComparisonSort.key === column) {
+    state.heroComparisonSort.direction = state.heroComparisonSort.direction === "asc" ? "desc" : "asc";
+  } else {
+    state.heroComparisonSort.key = column;
+    state.heroComparisonSort.direction = "desc";
+  }
+  saveHeroCompareSettings();
+  renderHeroCompareControls();
+  renderHeroCompareContent();
+});
+el.clearHeroCompareButton.addEventListener("click", () => {
+  state.selectedHeroComparisonIds.clear();
+  saveHeroCompareSettings();
+  renderHeroComparePicker();
+  renderHeroCompareContent();
 });
 el.itemLabButton.addEventListener("click", showItemLab);
 el.itemResults.addEventListener("click", (event) => {
@@ -1827,6 +2192,7 @@ el.discoverItemsButton.addEventListener("click", () => loadItemMatchups("study")
 el.recommendItemsButton.addEventListener("click", () => loadItemMatchups("recommend"));
 
 loadSavedFilters();
+loadHeroCompareSettings();
 
 loadHeroList()
   .catch((_error) => {

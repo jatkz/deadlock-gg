@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 DEFAULT_DB = Path("data/deadlock-analysis/deadlock_matches.sqlite")
 DEFAULT_ASSET_MANIFEST = Path("assets/deadlock/manifest.json")
+DEFAULT_HERO_COMPARISON_TABLE = Path("assets/deadlock/hero_comparison_table.json")
 DEFAULT_STATIC_DIR = Path("ui")
 DEFAULT_SAVED_MATCHES_FILE = Path("data/deadlock-saved/saved_matches.jsonl")
 
@@ -775,6 +776,7 @@ class AppState:
     db_path: Path
     static_dir: Path
     saved_matches_file: Path
+    hero_comparison_table: dict[str, Any]
     hero_assets: dict[int, dict[str, Any]]
     item_assets: dict[int, dict[str, Any]]
     raw_hero_assets: dict[int, dict[str, Any]]
@@ -835,6 +837,19 @@ def load_assets(
         if item.get("id") is not None
     }
     return heroes, items, raw_hero_assets, raw_item_assets_by_class, raw_item_assets_by_id
+
+
+def load_hero_comparison_table(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "schema_version": 1,
+            "source": {"file": str(path), "missing": True},
+            "counts": {"columns": 0, "heroes": 0, "hero_asset_matches": 0},
+            "columns": [],
+            "heroes": [],
+        }
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    return manifest if isinstance(manifest, dict) else {}
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -997,6 +1012,9 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
             if path == "/api/heroes":
                 self.send_json(self.api_heroes(params))
                 return
+            if path == "/api/hero-comparison":
+                self.send_json(self.api_hero_comparison(params))
+                return
             if path.startswith("/api/heroes/"):
                 hero_key = unquote(path.rsplit("/", 1)[-1])
                 self.send_json(self.api_hero_detail(hero_key))
@@ -1048,6 +1066,28 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
             ]
         heroes.sort(key=lambda hero: str(hero.get("name") or ""))
         return {"items": heroes, "total": len(heroes)}
+
+    def api_hero_comparison(self, params: dict[str, list[str]]) -> dict[str, Any]:
+        search = (first(params, "search") or "").strip()
+        search = search_token(search)
+        rows = [
+            row for row in self.state.hero_comparison_table.get("heroes", [])
+            if isinstance(row, dict)
+        ]
+        if search:
+            rows = [
+                row for row in rows
+                if search in search_token(row.get("hero", {}).get("name"))
+                or search in search_token(row.get("values", {}).get("hero"))
+                or str(row.get("hero", {}).get("id")) == search
+            ]
+        return {
+            "source": self.state.hero_comparison_table.get("source", {}),
+            "counts": self.state.hero_comparison_table.get("counts", {}),
+            "columns": self.state.hero_comparison_table.get("columns", []),
+            "items": rows,
+            "total": len(rows),
+        }
 
     def resolve_hero_asset(self, hero_key: str) -> dict[str, Any]:
         token = search_token(hero_key)
@@ -2156,6 +2196,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Serve the local Deadlock match detail UI.")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--asset-manifest", type=Path, default=DEFAULT_ASSET_MANIFEST)
+    parser.add_argument("--hero-comparison-table", type=Path, default=DEFAULT_HERO_COMPARISON_TABLE)
     parser.add_argument("--saved-matches-file", type=Path, default=DEFAULT_SAVED_MATCHES_FILE)
     parser.add_argument("--static-dir", type=Path, default=DEFAULT_STATIC_DIR)
     parser.add_argument("--host", default="127.0.0.1")
@@ -2166,11 +2207,13 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     hero_assets, item_assets, raw_hero_assets, raw_item_assets_by_class, raw_item_assets_by_id = load_assets(args.asset_manifest)
+    hero_comparison_table = load_hero_comparison_table(args.hero_comparison_table)
     percentiles, score_count = build_score_percentiles(args.db)
     state = AppState(
         db_path=args.db,
         static_dir=args.static_dir,
         saved_matches_file=args.saved_matches_file,
+        hero_comparison_table=hero_comparison_table,
         hero_assets=hero_assets,
         item_assets=item_assets,
         raw_hero_assets=raw_hero_assets,

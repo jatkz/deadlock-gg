@@ -16,6 +16,7 @@
           </div>
           <div class="topActions">
             <button id="heroDataButton" type="button">Hero Data</button>
+            <button id="heroCompareButton" type="button">Hero Compare</button>
             <button id="itemLabButton" type="button">Item Lab</button>
             <button id="refreshButton" type="button" title="Refresh performances">Refresh</button>
           </div>
@@ -87,6 +88,35 @@
             </div>
           </section>
           <div id="heroDataContent"></div>
+        </div>
+        <div id="heroCompare" class="heroCompare hidden">
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Hero Compare</h3>
+              <span id="heroCompareSummary">Wiki comparison table</span>
+            </div>
+            <div class="heroCompareControls">
+              <label>
+                Search heroes
+                <input id="heroCompareSearchInput" type="search" placeholder="Abrams, Shiv, Yamato">
+              </label>
+              <label>
+                Sort by
+                <select id="heroCompareSortInput"></select>
+              </label>
+              <button id="heroCompareSortDirectionButton" type="button">Desc</button>
+              <button id="clearHeroCompareButton" type="button">Clear</button>
+            </div>
+            <div id="heroComparePicker" class="heroComparePicker"></div>
+          </section>
+          <section class="sectionBlock">
+            <div class="sectionTitle">
+              <h3>Stats</h3>
+              <span id="heroCompareCount"></span>
+            </div>
+            <div id="heroCompareColumnPicker" class="heroCompareColumnPicker"></div>
+            <div id="heroCompareContent" class="heroCompareContent"></div>
+          </section>
         </div>
         <div id="itemLab" class="itemLab hidden">
           <section class="sectionBlock">

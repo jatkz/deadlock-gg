@@ -79,6 +79,25 @@ python scripts/build_deadlock_asset_manifest.py --pretty
 python scripts/build_deadlock_sqlite_db.py
 ```
 
+Pull the Deadlock wiki hero comparison table into local JSON/CSV:
+
+```sh
+./deadlock_hero_comparison_table --pretty
+```
+
+If `deadlock.wiki` returns a browser challenge, save the rendered page HTML from your browser and build from that file:
+
+```sh
+./deadlock_hero_comparison_table --source-file ~/Downloads/Hero_Comparison_Table.html --pretty
+```
+
+Pull Deadlock wiki item pages, including sectioned interaction tables and item/hero links:
+
+```sh
+./deadlock_item_pages --pretty
+./deadlock_item_pages --item "Crippling Headshot" --pretty
+```
+
 Output defaults to:
 
 ```text
