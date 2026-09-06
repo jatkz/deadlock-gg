@@ -1552,3 +1552,5 @@ button.evidenceRow:hover {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 }
+
+.damageLink { display: inline-flex; align-items: center; padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); text-decoration: none; }

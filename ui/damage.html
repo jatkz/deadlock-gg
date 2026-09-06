@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Damage Calculator · Deadlock</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/damage.css"><script type="module" src="/damage.mjs"></script></head>
+<body><main class="calculator">
+<header class="calcHeader"><div><p class="eyebrow">DEADLOCK / BUILD LAB</p><h1>Damage calculator</h1><p>Build a hero. Set a target. Inspect every hit.</p></div><a class="damageLink" href="/">Back to matches</a></header>
+<p id="status" role="status" aria-live="polite">Loading hero and item data…</p>
+<form id="calculatorForm" hidden><div class="calcLayout"><aside>
+<section class="calcPanel"><h2>01 / Attacker</h2><label>Hero<select id="hero"></select></label>
+<label>Boons earned<input id="boons" type="number" min="0" max="35" step="1" value="0" required></label><p id="progression" class="subtle"></p>
+<div class="fieldGrid"><label>Extra spirit<input id="extraSpirit" type="number" min="0" max="10000" step="0.1" value="0" required></label>
+<label>Extra weapon damage %<input id="extraWeapon" type="number" min="-100" max="10000" step="0.1" value="0" required></label></div>
+<label>Total spirit override<input id="spiritOverride" type="number" min="0" max="10000" step="0.1" placeholder="Auto from build"></label>
+<p class="subtle">Use the override for an in-game spirit value or an imbued ability. Extra stats include buffs and permanent pickups.</p><div id="attackerStats" aria-live="polite"></div><p class="subtle">Maximum health, melee damage before target defenses, magazine capacity, and primary-fire shots per second. Ability stat bonuses, conditional buffs, and procs are excluded.</p></section>
+<section class="calcPanel"><h2>02 / Items</h2><button id="browseInventory" class="inventoryBrowse" type="button" aria-haspopup="dialog" aria-controls="inventoryModal">Browse Inventory</button><label>Find an item<input id="itemSearch" type="search" placeholder="Search shop items…"></label>
+<div id="itemPicker" class="itemPicker"></div><div class="sectionTitle"><h3>Build order <span id="itemCount"></span></h3><button id="clearItems" type="button">Clear</button></div>
+<div class="buildTimelineControls">
+  <label for="buildStep">Jump to build step <span id="buildStepLabel"></span></label>
+  <input id="buildStep" type="range" min="0" max="0" step="1" value="0" disabled>
+  <div class="buildStepActions"><button id="previousBuildStep" type="button" disabled>← Previous</button><button id="nextBuildStep" type="button" disabled>Next →</button></div>
+  <button id="returnFullBuild" type="button" hidden>Return to full build</button>
+  <p class="subtle">Click an item to preview that step, or use the slider. Step 0 has no items. Boons, AP, and target settings stay as entered.</p>
+</div>
+<div id="equipped"></div>
+<p class="subtle">Items are numbered in the order added. Use the arrows to reorder them. Adding, removing, or reordering returns to the full build. Automatic bonuses include unconditional spirit, weapon damage, fire rate, ammo, health, melee damage, and shop investment. Conditional effects are listed below.</p></section>
+</aside><div><div id="buildPreviewBanner" class="buildPreviewBanner" hidden><div><strong id="buildPreviewText"></strong><p>Later items are saved, but excluded from these results.</p></div><button id="exitBuildPreview" type="button">Return to full build</button></div>
+<section class="calcPanel"><h2>03 / Target</h2><div class="fieldGrid targetFields">
+<label>Current health<input id="health" type="number" min="1" max="1000000" step="1" value="1000" required></label>
+<label>Damage barrier<input id="barrier" type="number" min="0" max="1000000" step="1" value="0" required></label>
+<label>Bullet resist %<input id="bulletResist" type="number" min="-100" max="100" step="0.1" value="0" required></label>
+<label>Spirit resist %<input id="spiritResist" type="number" min="-100" max="100" step="0.1" value="0" required></label>
+<label>Bullet resist reduction %<input id="bulletShred" type="number" min="0" max="100" step="0.1" value="0" required></label>
+<label>Spirit resist reduction %<input id="spiritShred" type="number" min="0" max="100" step="0.1" value="0" required></label>
+</div><p class="subtle">Enter final combined resistances and combined reductions. Each result starts against this same target independently.</p></section>
+<div id="buildSummary" class="summaryGrid" aria-live="polite"></div>
+<section class="calcPanel"><h2>Bullet damage</h2><div class="fieldGrid targetFields">
+<label>Damage retained after falloff %<input id="falloff" type="number" min="0" max="100" step="0.01" value="100" required></label>
+<label>Flat bonus per bullet<input id="flatBullet" type="number" min="0" max="10000" step="0.01" value="0" required></label>
+<label>Final headshot multiplier<input id="headMultiplier" type="number" min="1" max="10" step="0.01" value="2" required></label>
+<label>Bullet damage amplification %<input id="bulletAmp" type="number" min="-100" max="1000" step="0.01" value="0" required></label>
+</div><label class="check"><input id="headshot" type="checkbox"> Use headshots for shot damage and DPS</label><div id="bulletResults" aria-live="polite"></div>
+<p class="subtle">Primary fire, all pellets hit, no reloads or procs. Set falloff and final headshot multiplier for the range and target you are testing.</p></section>
+<section class="calcPanel"><div class="sectionTitle"><h2>Ability damage</h2><span id="apBudget"></span></div>
+<label>Spirit damage amplification %<input id="spiritAmp" type="number" min="-100" max="1000" step="0.1" value="0" required></label>
+<p class="subtle">AP costs are cumulative: 0 / 1 / 3 / 8. Choose a damage component and number of hits, ticks, or seconds of exposure. Components are not automatically summed into a full cast.</p><div id="abilities"></div></section>
+<section class="calcPanel"><h2>Calculation coverage</h2><p>Results use the cached asset snapshot, not a live game simulation. Ability conditions, stacks, procs, alternate fire, and chained effects need explicit inputs or additional formulas. Unsupported scaling is shown without a damage result.</p><div id="coverage"></div>
+<details><summary>Formulas and sources</summary><p>Bullet base = base bullet damage × (1 + boons × boon growth) + supported hero spirit scaling. Raw bullet = bullet base × (1 + weapon bonus / 100) + flat bonus.</p>
+<p>Ability component = upgraded base + spirit × upgraded spirit coefficient. Damage taken = raw damage × (1 − (resistance − reduction) / 100) × (1 + amplification / 100). Barrier absorbs damage before health.</p>
+<p>Shop bonuses use the highest reached investment threshold per category, without adding legacy tier bonuses. Display rounding happens only after calculation.</p>
+<p>Health = (boon-scaled base health × (1 + vitality investment and base-health bonuses) + flat health) × max-health modifiers. Melee uses boon growth, half the weapon damage bonus, and additive melee bonuses. Heavy melee boon growth follows the hero’s base heavy/light ratio.</p><p>Ammo = (base magazine + flat ammo bonuses + supported spirit scaling) × (1 + total ammo percentage bonuses), rounded up. Fire rate includes supported item and hero spirit bonuses; it excludes reloads and conditional buffs. Shotgun pellets do not multiply shots per second.</p><p><a href="https://deadlock.wiki/Ammo">Ammo reference</a> · <a href="https://deadlock.wiki/Fire_Rate">Fire rate reference</a> · <a href="https://deadlock.wiki/Health">Health reference</a> · <a href="https://deadlock.wiki/Melee_Attack">Melee reference</a> · <a href="https://deadlock.wiki/Weapon_Damage">Weapon damage reference</a> · <a href="https://deadlock.wiki/Boons">Boon reference</a> · <a href="https://assets.deadlock-api.com/docs">Asset API</a></p></details></section>
+<button id="resetCalculator" type="button">Reset calculator</button></div></div></form>
+<dialog id="inventoryModal" class="inventoryModal" aria-labelledby="inventoryTitle" aria-describedby="inventoryHelp">
+  <header class="inventoryHeader">
+    <div><p class="eyebrow">BUILD YOUR INVENTORY</p><h2 id="inventoryTitle">Browse items</h2><p id="inventoryHelp" class="subtle">Choose items by type and price. Click an equipped item to remove it.</p></div>
+    <button id="closeInventory" type="button" aria-label="Close inventory">Close ×</button>
+  </header>
+  <div class="inventoryFilters">
+    <label>Search items<input id="inventorySearch" type="search" placeholder="Search all items…" autofocus></label>
+    <label>Tier / cost<select id="inventoryTier"><option value="">All tiers / costs</option></select></label>
+    <div class="inventoryTypes" role="group" aria-label="Item type">
+      <button type="button" data-inventory-type="" aria-pressed="true">All types</button>
+      <button type="button" data-inventory-type="weapon" aria-pressed="false">Weapon</button>
+      <button type="button" data-inventory-type="vitality" aria-pressed="false">Vitality</button>
+      <button type="button" data-inventory-type="spirit" aria-pressed="false">Spirit</button>
+    </div>
+  </div>
+  <p id="inventoryCount" class="subtle" role="status" aria-live="polite"></p>
+  <div id="inventoryResults" class="inventoryResults"></div>
+  <footer class="inventoryFooter"><span id="inventorySummary" aria-live="polite"></span><button id="doneInventory" type="button">Done</button></footer>
+</dialog>
+</main></body></html>

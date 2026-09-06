@@ -784,6 +784,7 @@ class AppState:
     raw_item_assets_by_id: dict[int, dict[str, Any]]
     score_percentiles: dict[tuple[int, int], float]
     score_count: int
+    asset_generated_at: str | None = None
 
 
 def load_assets(
@@ -1009,6 +1010,13 @@ class DeadlockUiHandler(SimpleHTTPRequestHandler):
 
     def handle_api(self, path: str, params: dict[str, list[str]]) -> None:
         try:
+            if path == "/api/damage-data":
+                self.send_json({
+                    "generatedAt": self.state.asset_generated_at,
+                    "heroes": list(self.state.raw_hero_assets.values()),
+                    "items": list(self.state.raw_item_assets_by_id.values()),
+                })
+                return
             if path == "/api/heroes":
                 self.send_json(self.api_heroes(params))
                 return
@@ -2221,6 +2229,10 @@ def main() -> int:
         raw_item_assets_by_id=raw_item_assets_by_id,
         score_percentiles=percentiles,
         score_count=score_count,
+        asset_generated_at=(
+            json.loads(args.asset_manifest.read_text(encoding="utf-8")).get("generated_at")
+            if args.asset_manifest.exists() else None
+        ),
     )
 
     class Handler(DeadlockUiHandler):
